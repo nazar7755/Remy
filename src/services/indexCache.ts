@@ -1,3 +1,4 @@
+import { normalizeFilePath } from '../lib/filePaths'
 import { indexMetadataFromContent } from '../lib/indexMetadata'
 import { isTauri, tauriInvoke } from '../lib/tauri'
 import { canIndexFile } from './contentIndexer'
@@ -21,7 +22,12 @@ export function applyIndexCache(
       return item
     }
 
-    const cached = cacheByPath.get(item.filePath)
+    // Do not overwrite an in-flight manual index with stale cache from a parallel scan.
+    if (item.indexStatus === 'loading') {
+      return item
+    }
+
+    const cached = cacheByPath.get(normalizeFilePath(item.filePath))
     if (!cached) return item
 
     return {
@@ -49,5 +55,7 @@ export async function lookupIndexCache(
     paths,
   })
 
-  return new Map(rows.map((row) => [row.file_path, row]))
+  return new Map(
+    rows.map((row) => [normalizeFilePath(row.file_path), row]),
+  )
 }

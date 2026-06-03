@@ -285,7 +285,15 @@ export function FileDetailsPanel({
             <ActionButton
               label="Index Content"
               disabled={!desktop}
-              onClick={() => onIndexContent!(item.filePath)}
+              onClick={() => {
+                console.log('Index button clicked', {
+                  filePath: item.filePath,
+                  fileName: item.fileName,
+                  extension: item.extension,
+                  indexStatus: item.indexStatus,
+                })
+                onIndexContent!(item.filePath)
+              }}
               icon={
                 <svg
                   className="h-4 w-4"

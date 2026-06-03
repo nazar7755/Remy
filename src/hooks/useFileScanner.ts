@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { applyFavoritesToItems } from '../lib/favorites'
 import { mergeTimelineItems } from '../lib/contentSearch'
+import {
+  findFileItemByPath,
+  filePathsMatch,
+  normalizeFilePath,
+} from '../lib/filePaths'
 import { isTauri } from '../lib/tauri'
+import { parseExtension } from '../services/fileScanner/formatters'
 import { getClipboardEntries, pollClipboard } from '../services/clipboard'
 import {
   canIndexFile,
@@ -41,7 +47,7 @@ function dedupeFilesByPath(items: MemoryItem[]): MemoryItem[] {
   const byPath = new Map<string, MemoryItem>()
   for (const item of items) {
     if (!isClipboardItem(item)) {
-      byPath.set(item.filePath, item)
+      byPath.set(normalizeFilePath(item.filePath), item)
     }
   }
   return [...byPath.values()]
@@ -54,7 +60,9 @@ function applyIndexResult(
   error: string | null,
 ): MemoryItem[] {
   return items.map((item) => {
-    if (item.filePath !== filePath) return item
+    if (isClipboardItem(item) || !filePathsMatch(item.filePath, filePath)) {
+      return item
+    }
     if (error) {
       return {
         ...item,
@@ -63,28 +71,29 @@ function applyIndexResult(
         ...emptyIndexMetadata(),
       }
     }
-    if (!content) {
+    const text = content?.trim()
+    if (!text) {
       return {
         ...item,
         content: null,
-        indexStatus: 'idle',
-        indexError: null,
+        indexStatus: 'error',
+        indexError: 'No extractable text found in file',
         ...emptyIndexMetadata(),
       }
     }
     return {
       ...item,
-      content,
+      content: text,
       indexStatus: 'indexed',
       indexError: null,
-      ...indexMetadataFromContent(content),
+      ...indexMetadataFromContent(text),
     }
   })
 }
 
 function markIndexing(items: MemoryItem[], filePath: string): MemoryItem[] {
   return items.map((item) =>
-    item.filePath === filePath
+    !isClipboardItem(item) && filePathsMatch(item.filePath, filePath)
       ? { ...item, indexStatus: 'loading', indexError: null }
       : item,
   )
@@ -108,7 +117,9 @@ function clearSingleFileIndex(
   filePath: string,
 ): MemoryItem[] {
   return items.map((item) => {
-    if (item.filePath !== filePath || isClipboardItem(item)) return item
+    if (isClipboardItem(item) || !filePathsMatch(item.filePath, filePath)) {
+      return item
+    }
     return {
       ...item,
       content: null,
@@ -139,6 +150,7 @@ export function useFileScanner(
   const scanningRef = useRef(false)
   const indexingPathsRef = useRef(new Set<string>())
   const fileItemsRef = useRef(fileItems)
+  const mergedItemsRef = useRef<MemoryItem[]>([])
 
   const visibleClipboard = settings.clipboardEnabled ? clipboardItems : []
 
@@ -165,6 +177,10 @@ export function useFileScanner(
     fileItemsRef.current = fileItems
   }, [fileItems])
 
+  useEffect(() => {
+    mergedItemsRef.current = items
+  }, [items])
+
   const clearClipboardItems = useCallback(() => {
     setClipboardItems([])
     setClipboardError(null)
@@ -177,35 +193,91 @@ export function useFileScanner(
 
   const indexFile = useCallback(
     async (filePath: string, options?: { force?: boolean }) => {
-      const target = fileItemsRef.current.find((i) => i.filePath === filePath)
-      if (!target || !canIndexFile(target.extension) || isClipboardItem(target)) {
+      const trimmedPath = filePath.trim()
+      if (!trimmedPath) {
+        console.warn('[Remy] Index skipped: empty file path')
         return
       }
-      if (indexingPathsRef.current.has(filePath)) return
 
-      indexingPathsRef.current.add(filePath)
+      const target =
+        findFileItemByPath(fileItemsRef.current, trimmedPath) ??
+        findFileItemByPath(mergedItemsRef.current, trimmedPath)
+
+      const extension =
+        target?.extension ??
+        parseExtension(trimmedPath.split(/[/\\]/).pop() ?? trimmedPath)
+
+      if (!canIndexFile(extension)) {
+        console.warn('[Remy] Index skipped: unsupported extension', {
+          filePath: trimmedPath,
+          extension,
+        })
+        return
+      }
+
+      if (target && isClipboardItem(target)) {
+        console.warn('[Remy] Index skipped: clipboard item', trimmedPath)
+        return
+      }
+
+      if (!target) {
+        console.warn(
+          '[Remy] Index proceeding without live scan row (path may still exist on disk)',
+          trimmedPath,
+        )
+      }
+
+      if (indexingPathsRef.current.has(trimmedPath)) return
+
+      console.log('Indexing started for path:', trimmedPath)
+      indexingPathsRef.current.add(trimmedPath)
       setIndexNotice(null)
-      setFileItems((prev) => markIndexing(prev, filePath))
+      setFileItems((prev) => markIndexing(prev, trimmedPath))
 
       try {
-        const content = await indexFileContent(filePath, target.fileName, {
-          force: options?.force,
+        const content = await indexFileContent(
+          trimmedPath,
+          target?.fileName ?? trimmedPath.split(/[/\\]/).pop() ?? trimmedPath,
+          { force: options?.force },
+        )
+        console.log('Tauri indexing result:', {
+          path: trimmedPath,
+          chars: content?.length ?? 0,
         })
-        setFileItems((prev) => applyIndexResult(prev, filePath, content, null))
+        setFileItems((prev) => {
+          const next = applyIndexResult(prev, trimmedPath, content, null)
+          const updated = findFileItemByPath(next, trimmedPath)
+          if (updated) {
+            console.log('Memory item updated after indexing', {
+              path: updated.filePath,
+              indexStatus: updated.indexStatus,
+              indexedCharCount: updated.indexedCharCount,
+            })
+          } else {
+            console.warn(
+              '[Remy] Indexed on disk but item is not in the current scan list',
+              trimmedPath,
+            )
+          }
+          return next
+        })
       } catch (err) {
         const message =
           err instanceof Error ? err.message : 'Content indexing failed'
-        setFileItems((prev) => applyIndexResult(prev, filePath, null, message))
+        console.error('Tauri indexing result:', { path: trimmedPath, error: message })
+        setFileItems((prev) =>
+          applyIndexResult(prev, trimmedPath, null, message),
+        )
         setIndexNotice(message)
       } finally {
-        indexingPathsRef.current.delete(filePath)
+        indexingPathsRef.current.delete(trimmedPath)
       }
     },
     [],
   )
 
   const clearFileIndex = useCallback(async (filePath: string) => {
-    const target = fileItemsRef.current.find((i) => i.filePath === filePath)
+    const target = findFileItemByPath(fileItemsRef.current, filePath)
     if (!target || isClipboardItem(target)) return
 
     setIndexNotice(null)

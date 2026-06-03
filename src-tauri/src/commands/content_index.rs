@@ -34,11 +34,15 @@ pub fn index_file_content(
     let (mtime_ms, file_size) = file_metadata_fields(&meta)?;
 
     let content = content_indexer::extract_text(file_path, &extension);
-    if let Some(ref text) = content {
-        store.save_file_index(&path, text, mtime_ms, file_size)?;
+    match content {
+        Some(ref text) => {
+            store.save_file_index(&path, text, mtime_ms, file_size)?;
+            Ok(Some(text.clone()))
+        }
+        None => Err(format!(
+            "Could not extract text from .{extension} file (empty or unsupported content)"
+        )),
     }
-
-    Ok(content)
 }
 
 #[tauri::command]

@@ -11,10 +11,11 @@ export async function indexFileContent(
     return mockContentForFile(fileName)
   }
 
-  return tauriInvoke<string | null>('index_file_content', {
+  const result = await tauriInvoke<string | null>('index_file_content', {
     path: filePath,
     force: options?.force ?? false,
   })
+  return result?.trim() ? result : null
 }
 
 export async function clearFileIndex(filePath: string): Promise<void> {
