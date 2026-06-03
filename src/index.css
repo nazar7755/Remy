@@ -1,0 +1,32 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --color-remy-bg: #09090b;
+  --color-remy-surface: #111113;
+  --color-remy-elevated: #18181b;
+  --color-remy-border: #27272a;
+  --color-remy-muted: #71717a;
+  --color-remy-subtle: #a1a1aa;
+  --color-remy-text: #fafafa;
+  --color-remy-accent: #8b5cf6;
+  --color-remy-accent-soft: #2e1064;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply m-0 min-h-svh bg-remy-bg font-sans text-remy-text antialiased;
+  }
+
+  #root {
+    @apply min-h-svh;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-remy-accent) 35%, transparent);
+  }
+}
