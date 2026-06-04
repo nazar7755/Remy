@@ -11,6 +11,18 @@ pub struct AppSettingsDto {
     pub file_poll_interval_ms: u32,
     pub clipboard_poll_interval_ms: u32,
     pub clipboard_enabled: bool,
+    #[serde(default = "default_background_indexing_enabled")]
+    pub background_indexing_enabled: bool,
+    #[serde(default = "default_background_index_scope")]
+    pub background_index_scope: String,
+}
+
+fn default_background_indexing_enabled() -> bool {
+    false
+}
+
+fn default_background_index_scope() -> String {
+    "txt_docx".to_string()
 }
 
 impl Default for AppSettingsDto {
@@ -22,6 +34,8 @@ impl Default for AppSettingsDto {
             file_poll_interval_ms: 5000,
             clipboard_poll_interval_ms: 2000,
             clipboard_enabled: true,
+            background_indexing_enabled: default_background_indexing_enabled(),
+            background_index_scope: default_background_index_scope(),
         }
     }
 }

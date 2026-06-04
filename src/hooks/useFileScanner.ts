@@ -27,6 +27,7 @@ import { isClipboardItem } from '../types/memoryItem'
 
 export interface FileScannerState {
   items: MemoryItem[]
+  fileItems: MemoryItem[]
   fileCount: number
   folderPaths: FolderPaths | null
   loading: boolean
@@ -37,10 +38,12 @@ export interface FileScannerState {
   isWatching: boolean
   lastUpdatedAt: Date | null
   refresh: () => Promise<void>
-  indexFile: (filePath: string, options?: { force?: boolean }) => Promise<void>
+  indexFile: (
+    filePath: string,
+    options?: { force?: boolean; background?: boolean },
+  ) => Promise<void>
   clearFileIndex: (filePath: string) => Promise<void>
   clearClipboardItems: () => void
-  clearIndexedContentInMemory: () => void
 }
 
 function dedupeFilesByPath(items: MemoryItem[]): MemoryItem[] {
@@ -97,19 +100,6 @@ function markIndexing(items: MemoryItem[], filePath: string): MemoryItem[] {
       ? { ...item, indexStatus: 'loading', indexError: null }
       : item,
   )
-}
-
-function clearIndexedFromItems(items: MemoryItem[]): MemoryItem[] {
-  return items.map((item) => {
-    if (isClipboardItem(item)) return item
-    return {
-      ...item,
-      content: null,
-      indexStatus: 'idle',
-      indexError: null,
-      ...emptyIndexMetadata(),
-    }
-  })
 }
 
 function clearSingleFileIndex(
@@ -186,16 +176,18 @@ export function useFileScanner(
     setClipboardError(null)
   }, [])
 
-  const clearIndexedContentInMemory = useCallback(() => {
-    setFileItems((prev) => clearIndexedFromItems(prev))
-    setIndexNotice(null)
-  }, [])
-
   const indexFile = useCallback(
-    async (filePath: string, options?: { force?: boolean }) => {
+    async (
+      filePath: string,
+      options?: { force?: boolean; background?: boolean },
+    ) => {
       const trimmedPath = filePath.trim()
+      const isBackground = options?.background === true
+
       if (!trimmedPath) {
-        console.warn('[Remy] Index skipped: empty file path')
+        if (!isBackground) {
+          console.warn('[Remy] Index skipped: empty file path')
+        }
         return
       }
 
@@ -208,19 +200,23 @@ export function useFileScanner(
         parseExtension(trimmedPath.split(/[/\\]/).pop() ?? trimmedPath)
 
       if (!canIndexFile(extension)) {
-        console.warn('[Remy] Index skipped: unsupported extension', {
-          filePath: trimmedPath,
-          extension,
-        })
+        if (!isBackground) {
+          console.warn('[Remy] Index skipped: unsupported extension', {
+            filePath: trimmedPath,
+            extension,
+          })
+        }
         return
       }
 
       if (target && isClipboardItem(target)) {
-        console.warn('[Remy] Index skipped: clipboard item', trimmedPath)
+        if (!isBackground) {
+          console.warn('[Remy] Index skipped: clipboard item', trimmedPath)
+        }
         return
       }
 
-      if (!target) {
+      if (!target && !isBackground) {
         console.warn(
           '[Remy] Index proceeding without live scan row (path may still exist on disk)',
           trimmedPath,
@@ -229,10 +225,15 @@ export function useFileScanner(
 
       if (indexingPathsRef.current.has(trimmedPath)) return
 
-      console.log('Indexing started for path:', trimmedPath)
+      if (!isBackground) {
+        console.log('Indexing started for path:', trimmedPath)
+      }
       indexingPathsRef.current.add(trimmedPath)
-      setIndexNotice(null)
-      setFileItems((prev) => markIndexing(prev, trimmedPath))
+
+      if (!isBackground) {
+        setIndexNotice(null)
+        setFileItems((prev) => markIndexing(prev, trimmedPath))
+      }
 
       try {
         const content = await indexFileContent(
@@ -240,35 +241,41 @@ export function useFileScanner(
           target?.fileName ?? trimmedPath.split(/[/\\]/).pop() ?? trimmedPath,
           { force: options?.force },
         )
-        console.log('Tauri indexing result:', {
-          path: trimmedPath,
-          chars: content?.length ?? 0,
-        })
+        if (!isBackground) {
+          console.log('Tauri indexing result:', {
+            path: trimmedPath,
+            chars: content?.length ?? 0,
+          })
+        }
         setFileItems((prev) => {
           const next = applyIndexResult(prev, trimmedPath, content, null)
-          const updated = findFileItemByPath(next, trimmedPath)
-          if (updated) {
-            console.log('Memory item updated after indexing', {
-              path: updated.filePath,
-              indexStatus: updated.indexStatus,
-              indexedCharCount: updated.indexedCharCount,
-            })
-          } else {
-            console.warn(
-              '[Remy] Indexed on disk but item is not in the current scan list',
-              trimmedPath,
-            )
+          if (!isBackground) {
+            const updated = findFileItemByPath(next, trimmedPath)
+            if (updated) {
+              console.log('Memory item updated after indexing', {
+                path: updated.filePath,
+                indexStatus: updated.indexStatus,
+                indexedCharCount: updated.indexedCharCount,
+              })
+            } else {
+              console.warn(
+                '[Remy] Indexed on disk but item is not in the current scan list',
+                trimmedPath,
+              )
+            }
           }
           return next
         })
       } catch (err) {
         const message =
           err instanceof Error ? err.message : 'Content indexing failed'
-        console.error('Tauri indexing result:', { path: trimmedPath, error: message })
+        if (!isBackground) {
+          console.error('Tauri indexing result:', { path: trimmedPath, error: message })
+          setIndexNotice(message)
+        }
         setFileItems((prev) =>
           applyIndexResult(prev, trimmedPath, null, message),
         )
-        setIndexNotice(message)
       } finally {
         indexingPathsRef.current.delete(trimmedPath)
       }
@@ -414,6 +421,7 @@ export function useFileScanner(
 
   return {
     items,
+    fileItems,
     fileCount,
     folderPaths,
     loading,
@@ -427,6 +435,5 @@ export function useFileScanner(
     indexFile,
     clearFileIndex,
     clearClipboardItems,
-    clearIndexedContentInMemory,
   }
 }

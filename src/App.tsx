@@ -8,6 +8,7 @@ import { MemoriesPage } from './components/MemoriesPage'
 import { SearchBar } from './components/SearchBar'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
+import { useBackgroundIndexing } from './hooks/useBackgroundIndexing'
 import { useFavorites } from './hooks/useFavorites'
 import { useFileScanner } from './hooks/useFileScanner'
 import { useSettings } from './hooks/useSettings'
@@ -70,21 +71,30 @@ function App() {
     favorites.favoriteIds,
   )
 
+  const indexingQueue = useBackgroundIndexing(
+    memoryScan.fileItems,
+    settingsState.settings,
+    memoryScan.indexFile,
+    scannerEnabled,
+  )
+
+  const safeItems = memoryScan.items ?? []
+
   const meta = SECTION_META[activeSection]
   const timelineQuery = globalQuery.trim() || contentQuery.trim()
 
   const favoriteItems = useMemo(
     () =>
       resolveFavoriteItems(
-        memoryScan.items ?? [],
+        safeItems,
         favorites.records ?? [],
       ),
-    [memoryScan.items, favorites.records],
+    [safeItems, favorites.records],
   )
 
   const indexedItems = useMemo(
-    () => resolveIndexedItems(memoryScan.items ?? []),
-    [memoryScan.items],
+    () => resolveIndexedItems(safeItems),
+    [safeItems],
   )
 
   return (
@@ -92,6 +102,7 @@ function App() {
       <Sidebar
         activeSection={activeSection}
         onSectionChange={setActiveSection}
+        indexingQueue={indexingQueue}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -123,7 +134,7 @@ function App() {
                   className="mb-6"
                 />
                 <FileMemoryTimeline
-                  items={memoryScan.items}
+                  items={safeItems}
                   folderPaths={memoryScan.folderPaths}
                   loading={memoryScan.loading}
                   error={memoryScan.error}
@@ -146,7 +157,7 @@ function App() {
 
             {activeSection === 'Memories' && (
               <MemoriesPage
-                items={memoryScan.items}
+                items={safeItems}
                 loading={memoryScan.loading}
                 error={memoryScan.error}
                 query={globalQuery}
@@ -194,6 +205,7 @@ function App() {
               <SettingsPage
                 settingsState={settingsState}
                 memoryScan={memoryScan}
+                indexingQueue={indexingQueue}
               />
             )}
 

@@ -3,6 +3,7 @@ import {
   clampSettings,
   DEFAULT_SETTINGS,
   type AppSettings,
+  type BackgroundIndexScope,
   type MemoryStatistics,
 } from '../types/settings'
 
@@ -15,6 +16,17 @@ interface TauriAppSettingsDto {
   file_poll_interval_ms: number
   clipboard_poll_interval_ms: number
   clipboard_enabled: boolean
+  background_indexing_enabled?: boolean
+  background_index_scope?: string
+}
+
+const VALID_SCOPES: BackgroundIndexScope[] = ['txt', 'txt_docx', 'txt_docx_pdf']
+
+function parseBackgroundIndexScope(raw: string | undefined): BackgroundIndexScope {
+  if (raw && (VALID_SCOPES as readonly string[]).includes(raw)) {
+    return raw as BackgroundIndexScope
+  }
+  return DEFAULT_SETTINGS.backgroundIndexScope
 }
 
 interface TauriMemoryStatisticsDto {
@@ -31,6 +43,9 @@ function fromTauriSettings(dto: TauriAppSettingsDto): AppSettings {
     filePollIntervalMs: dto.file_poll_interval_ms,
     clipboardPollIntervalMs: dto.clipboard_poll_interval_ms,
     clipboardEnabled: dto.clipboard_enabled,
+    backgroundIndexingEnabled:
+      dto.background_indexing_enabled ?? DEFAULT_SETTINGS.backgroundIndexingEnabled,
+    backgroundIndexScope: parseBackgroundIndexScope(dto.background_index_scope),
   })
 }
 
@@ -43,6 +58,8 @@ function toTauriSettings(settings: AppSettings): TauriAppSettingsDto {
     file_poll_interval_ms: clamped.filePollIntervalMs,
     clipboard_poll_interval_ms: clamped.clipboardPollIntervalMs,
     clipboard_enabled: clamped.clipboardEnabled,
+    background_indexing_enabled: clamped.backgroundIndexingEnabled,
+    background_index_scope: clamped.backgroundIndexScope,
   }
 }
 

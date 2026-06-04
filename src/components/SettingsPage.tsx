@@ -1,24 +1,27 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   clearClipboardHistory,
-  clearIndexedContent,
   fetchPersistedStatistics,
 } from '../services/settings'
 import { isTauri } from '../lib/tauri'
 import type { FileScannerState } from '../hooks/useFileScanner'
+import type { BackgroundIndexingState } from '../hooks/useBackgroundIndexing'
 import type { SettingsState } from '../hooks/useSettings'
+import { IndexingQueueStatus } from './IndexingQueueStatus'
 import {
   CLIPBOARD_POLL_MAX_MS,
   CLIPBOARD_POLL_MIN_MS,
   FILE_POLL_MAX_MS,
   FILE_POLL_MIN_MS,
   type AppSettings,
+  type BackgroundIndexScope,
   type MemoryStatistics,
 } from '../types/settings'
 
 interface SettingsPageProps {
   settingsState: SettingsState
   memoryScan: FileScannerState
+  indexingQueue: BackgroundIndexingState
 }
 
 function SettingsSection({
@@ -144,7 +147,34 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
   )
 }
 
-export function SettingsPage({ settingsState, memoryScan }: SettingsPageProps) {
+function ScopeSelect({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: BackgroundIndexScope
+  disabled?: boolean
+  onChange: (scope: BackgroundIndexScope) => void
+}) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value as BackgroundIndexScope)}
+      className="rounded-md border border-remy-border bg-remy-elevated px-2 py-1.5 text-xs text-remy-text focus:border-remy-accent focus:outline-none disabled:opacity-50"
+    >
+      <option value="txt">TXT only</option>
+      <option value="txt_docx">TXT + DOCX</option>
+      <option value="txt_docx_pdf">TXT + DOCX + PDF</option>
+    </select>
+  )
+}
+
+export function SettingsPage({
+  settingsState,
+  memoryScan,
+  indexingQueue,
+}: SettingsPageProps) {
   const { settings, loading, saving, error, updateSettings } = settingsState
   const [stats, setStats] = useState<MemoryStatistics>({
     filesTracked: 0,
@@ -152,8 +182,9 @@ export function SettingsPage({ settingsState, memoryScan }: SettingsPageProps) {
     indexedFiles: 0,
     totalIndexedCharacters: 0,
   })
-  const [clearing, setClearing] = useState<'clipboard' | 'index' | null>(null)
+  const [clearing, setClearing] = useState<'clipboard' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null)
 
   const refreshStats = useCallback(async () => {
     const persisted = await fetchPersistedStatistics()
@@ -192,6 +223,7 @@ export function SettingsPage({ settingsState, memoryScan }: SettingsPageProps) {
 
     setClearing('clipboard')
     setActionError(null)
+    setActionSuccess(null)
     try {
       await clearClipboardHistory()
       memoryScan.clearClipboardItems()
@@ -199,31 +231,6 @@ export function SettingsPage({ settingsState, memoryScan }: SettingsPageProps) {
     } catch (err) {
       setActionError(
         err instanceof Error ? err.message : 'Failed to clear clipboard history',
-      )
-    } finally {
-      setClearing(null)
-    }
-  }
-
-  const handleClearIndex = async () => {
-    if (!isTauri()) return
-    if (
-      !window.confirm(
-        'Delete all indexed file content from disk? You can re-index files later.',
-      )
-    ) {
-      return
-    }
-
-    setClearing('index')
-    setActionError(null)
-    try {
-      await clearIndexedContent()
-      memoryScan.clearIndexedContentInMemory()
-      await refreshStats()
-    } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : 'Failed to clear indexed content',
       )
     } finally {
       setClearing(null)
@@ -247,6 +254,12 @@ export function SettingsPage({ settingsState, memoryScan }: SettingsPageProps) {
       {(error || actionError) && (
         <p className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
           {error ?? actionError}
+        </p>
+      )}
+
+      {actionSuccess && (
+        <p className="rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300">
+          {actionSuccess}
         </p>
       )}
 
@@ -350,19 +363,40 @@ export function SettingsPage({ settingsState, memoryScan }: SettingsPageProps) {
             {clearing === 'clipboard' ? 'Clearing…' : 'Clear history'}
           </button>
         </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Background indexing"
+        description="Off by default. When enabled, indexes eligible TXT/DOCX files (max 10MB each), one every 5 seconds."
+      >
         <SettingsRow
-          label="Clear indexed content"
-          hint="Removes extracted text cached for search"
+          label="Enable background indexing"
+          hint="Default off — turn on only when you want automatic indexing"
         >
-          <button
-            type="button"
-            disabled={!isTauri() || clearing !== null}
-            onClick={() => void handleClearIndex()}
-            className="rounded-md border border-remy-border bg-remy-elevated px-3 py-1.5 text-xs font-medium text-remy-text transition-colors hover:border-zinc-600 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {clearing === 'index' ? 'Clearing…' : 'Clear index cache'}
-          </button>
+          <Toggle
+            label="Enable background indexing"
+            checked={settings.backgroundIndexingEnabled}
+            disabled={disabled}
+            onChange={(backgroundIndexingEnabled) =>
+              patch({ backgroundIndexingEnabled })
+            }
+          />
         </SettingsRow>
+        <SettingsRow
+          label="File types to index"
+          hint="Default: TXT + DOCX only (no PDF). Files over 10MB are skipped."
+        >
+          <ScopeSelect
+            value={settings.backgroundIndexScope}
+            disabled={disabled || !settings.backgroundIndexingEnabled}
+            onChange={(backgroundIndexScope) => patch({ backgroundIndexScope })}
+          />
+        </SettingsRow>
+        {isTauri() && (
+          <div className="pb-4">
+            <IndexingQueueStatus {...indexingQueue} />
+          </div>
+        )}
       </SettingsSection>
 
       <SettingsSection

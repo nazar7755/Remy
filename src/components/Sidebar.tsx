@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
 import type { NavSection } from '../types/memory'
+import { IndexingQueueStatus } from './IndexingQueueStatus'
+import type { BackgroundIndexingState } from '../hooks/useBackgroundIndexing'
+import { isTauri } from '../lib/tauri'
 
 const navItems: { id: NavSection; icon: ReactNode }[] = [
   {
@@ -74,9 +77,14 @@ const navItems: { id: NavSection; icon: ReactNode }[] = [
 interface SidebarProps {
   activeSection: NavSection
   onSectionChange: (section: NavSection) => void
+  indexingQueue?: BackgroundIndexingState
 }
 
-export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
+export function Sidebar({
+  activeSection,
+  onSectionChange,
+  indexingQueue,
+}: SidebarProps) {
   return (
     <aside className="flex w-[220px] shrink-0 flex-col border-r border-remy-border bg-remy-surface">
       <div className="flex h-14 items-center gap-2.5 border-b border-remy-border px-4">
@@ -116,7 +124,12 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
         })}
       </nav>
 
-      <div className="border-t border-remy-border p-3">
+      <div className="border-t border-remy-border p-3 space-y-2">
+        {isTauri() && indexingQueue && (
+          <div className="rounded-lg border border-remy-border bg-remy-elevated/50 px-3 py-2.5">
+            <IndexingQueueStatus {...indexingQueue} compact />
+          </div>
+        )}
         <div className="rounded-lg border border-remy-border bg-remy-elevated/50 px-3 py-2.5">
           <p className="text-[11px] font-medium text-remy-subtle">Local-first</p>
           <p className="mt-0.5 text-[10px] leading-snug text-remy-muted">

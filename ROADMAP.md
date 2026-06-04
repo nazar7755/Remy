@@ -45,11 +45,11 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [ ] Infinite scroll or pagination for large folders
 - [ ] Grouping by day/week in timeline
 - [ ] Empty and error states per source
-- [ ] Background indexing queue (auto-index new indexable files; today indexing is manual from the details panel)
+- [x] Background indexing queue (off by default; manual Index Content; Settings toggle, scope, recovery controls)
 
 ### 1.4 Content & search
 
-- [x] Content indexing workflow — Index / Reindex / Clear index in details panel; status + char count + timestamp; dedicated Indexed sidebar page; Settings index statistics
+- [x] Content indexing workflow — Index / Reindex / Clear index in details panel; status + char count + timestamp; dedicated Indexed sidebar page; Settings index statistics; recovery: clear all indexed content + reset background queue
 - [ ] Index `xlsx` / `csv` text where practical
 - [x] Image thumbnails in cards (png/jpg/jpeg/webp; lazy 64×64 via Tauri asset protocol + `convertFileSrc`)
 - [ ] Fuzzy or ranked search (today: substring match in `contentSearch`)

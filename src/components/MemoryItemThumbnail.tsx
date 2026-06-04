@@ -51,7 +51,7 @@ export function MemoryItemThumbnail({
       className={`flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-remy-border bg-remy-elevated text-remy-subtle transition-colors group-hover:border-zinc-600 group-hover:text-remy-text ${className}`}
       aria-hidden
     >
-      {showThumbnail ? (
+      {showThumbnail && imageUrl ? (
         <img
           src={imageUrl}
           alt=""

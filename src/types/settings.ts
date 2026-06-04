@@ -1,3 +1,6 @@
+/** Which file types background indexing processes (txt always included). */
+export type BackgroundIndexScope = 'txt' | 'txt_docx' | 'txt_docx_pdf'
+
 export interface AppSettings {
   scanDownloads: boolean
   scanDesktop: boolean
@@ -5,6 +8,8 @@ export interface AppSettings {
   filePollIntervalMs: number
   clipboardPollIntervalMs: number
   clipboardEnabled: boolean
+  backgroundIndexingEnabled: boolean
+  backgroundIndexScope: BackgroundIndexScope
 }
 
 export interface MemoryStatistics {
@@ -21,6 +26,19 @@ export const DEFAULT_SETTINGS: AppSettings = {
   filePollIntervalMs: 5000,
   clipboardPollIntervalMs: 2000,
   clipboardEnabled: true,
+  backgroundIndexingEnabled: false,
+  backgroundIndexScope: 'txt_docx',
+}
+
+export function isExtensionInBackgroundScope(
+  extension: string,
+  scope: BackgroundIndexScope,
+): boolean {
+  if (extension === 'txt') return true
+  if (scope === 'txt') return false
+  if (extension === 'docx') return true
+  if (scope === 'txt_docx') return false
+  return extension === 'pdf'
 }
 
 export const FILE_POLL_MIN_MS = 2000
