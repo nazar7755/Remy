@@ -15,6 +15,12 @@ pub struct AppSettingsDto {
     pub background_indexing_enabled: bool,
     #[serde(default = "default_background_index_scope")]
     pub background_index_scope: String,
+    #[serde(default = "default_background_pdf_indexing_enabled")]
+    pub background_pdf_indexing_enabled: bool,
+    #[serde(default = "default_background_pdf_max_size_mb")]
+    pub background_pdf_max_size_mb: u32,
+    #[serde(default = "default_background_pdf_delay_sec")]
+    pub background_pdf_delay_sec: u32,
 }
 
 fn default_background_indexing_enabled() -> bool {
@@ -23,6 +29,18 @@ fn default_background_indexing_enabled() -> bool {
 
 fn default_background_index_scope() -> String {
     "txt_docx".to_string()
+}
+
+fn default_background_pdf_indexing_enabled() -> bool {
+    false
+}
+
+fn default_background_pdf_max_size_mb() -> u32 {
+    5
+}
+
+fn default_background_pdf_delay_sec() -> u32 {
+    10
 }
 
 impl Default for AppSettingsDto {
@@ -36,18 +54,19 @@ impl Default for AppSettingsDto {
             clipboard_enabled: true,
             background_indexing_enabled: default_background_indexing_enabled(),
             background_index_scope: default_background_index_scope(),
+            background_pdf_indexing_enabled: default_background_pdf_indexing_enabled(),
+            background_pdf_max_size_mb: default_background_pdf_max_size_mb(),
+            background_pdf_delay_sec: default_background_pdf_delay_sec(),
         }
     }
 }
 
 impl AppSettingsDto {
     pub fn clamp(mut self) -> Self {
-        self.file_poll_interval_ms = self
-            .file_poll_interval_ms
-            .clamp(2000, 120_000);
-        self.clipboard_poll_interval_ms = self
-            .clipboard_poll_interval_ms
-            .clamp(1000, 60_000);
+        self.file_poll_interval_ms = self.file_poll_interval_ms.clamp(2000, 120_000);
+        self.clipboard_poll_interval_ms = self.clipboard_poll_interval_ms.clamp(1000, 60_000);
+        self.background_pdf_max_size_mb = self.background_pdf_max_size_mb.clamp(1, 50);
+        self.background_pdf_delay_sec = self.background_pdf_delay_sec.clamp(5, 120);
         self
     }
 }

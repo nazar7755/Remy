@@ -45,11 +45,12 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [ ] Infinite scroll or pagination for large folders
 - [ ] Grouping by day/week in timeline
 - [ ] Empty and error states per source
-- [x] Background indexing queue (off by default; manual Index Content; Settings toggle, scope, recovery controls)
+- [x] Background indexing queue (off by default; TXT/DOCX; optional PDF with size/delay limits and crash-safe extraction)
 
 ### 1.4 Content & search
 
-- [x] Content indexing workflow — Index / Reindex / Clear index in details panel; status + char count + timestamp; dedicated Indexed sidebar page; Settings index statistics; recovery: clear all indexed content + reset background queue
+- [x] Content indexing workflow — Index / Reindex / Clear index in details panel; status + char count + timestamp; dedicated Indexed sidebar page; Settings index statistics
+- [x] PDF background indexing safety — off by default; isolated Rust extraction with timeout/panic guard; configurable max size and inter-file delay; failures marked `error` without retry in session
 - [ ] Index `xlsx` / `csv` text where practical
 - [x] Image thumbnails in cards (png/jpg/jpeg/webp; lazy 64×64 via Tauri asset protocol + `convertFileSrc`)
 - [ ] Fuzzy or ranked search (today: substring match in `contentSearch`)

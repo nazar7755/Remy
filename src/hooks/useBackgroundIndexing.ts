@@ -3,11 +3,14 @@ import { normalizeFilePath } from '../lib/filePaths'
 import { isTauri } from '../lib/tauri'
 import {
   collectBackgroundIndexCandidates,
-  INDEX_JOB_DELAY_MS,
+  getPostJobDelayMs,
   INDEX_QUEUE_STARTUP_DELAY_MS,
+  type BackgroundIndexOutcome,
 } from '../services/indexingQueue'
 import type { AppSettings } from '../types/settings'
 import type { MemoryItem } from '../types/memoryItem'
+
+export type { BackgroundIndexOutcome } from '../services/indexingQueue'
 
 export type BackgroundQueueStatus = 'disabled' | 'idle' | 'indexing'
 
@@ -16,12 +19,14 @@ export interface BackgroundIndexingState {
   currentFileName: string | null
   queuedCount: number
   indexedCount: number
+  indexingPdf: boolean
 }
 
 interface QueueUiState {
   status: BackgroundQueueStatus
   currentFileName: string | null
   queuedCount: number
+  indexingPdf: boolean
 }
 
 const DISABLED_STATE: BackgroundIndexingState = {
@@ -29,6 +34,7 @@ const DISABLED_STATE: BackgroundIndexingState = {
   currentFileName: null,
   queuedCount: 0,
   indexedCount: 0,
+  indexingPdf: false,
 }
 
 function nextQueueUi(patch: Partial<QueueUiState>): QueueUiState {
@@ -37,6 +43,7 @@ function nextQueueUi(patch: Partial<QueueUiState>): QueueUiState {
       status: patch.status,
       currentFileName: null,
       queuedCount: patch.queuedCount ?? 0,
+      indexingPdf: false,
     }
   }
 
@@ -45,6 +52,7 @@ function nextQueueUi(patch: Partial<QueueUiState>): QueueUiState {
       status: 'indexing',
       currentFileName: patch.currentFileName,
       queuedCount: patch.queuedCount ?? 0,
+      indexingPdf: patch.indexingPdf ?? false,
     }
   }
 
@@ -52,19 +60,27 @@ function nextQueueUi(patch: Partial<QueueUiState>): QueueUiState {
     status: 'idle',
     currentFileName: null,
     queuedCount: patch.queuedCount ?? 0,
+    indexingPdf: false,
   }
 }
 
 export function useBackgroundIndexing(
   fileItems: MemoryItem[],
   settings: AppSettings,
-  indexFile: (filePath: string, options?: { background?: boolean }) => Promise<void>,
+  indexFile: (
+    filePath: string,
+    options?: {
+      background?: boolean
+      skipWithError?: string
+    },
+  ) => Promise<BackgroundIndexOutcome>,
   scannerEnabled: boolean,
 ): BackgroundIndexingState {
   const [queueUi, setQueueUi] = useState<QueueUiState>({
     status: 'idle',
     currentFileName: null,
     queuedCount: 0,
+    indexingPdf: false,
   })
 
   const isActive =
@@ -132,7 +148,7 @@ export function useBackgroundIndexing(
 
     const candidates = collectBackgroundIndexCandidates(
       fileItemsRef.current,
-      settingsRef.current.backgroundIndexScope,
+      settingsRef.current,
       skipPaths,
     )
 
@@ -185,17 +201,51 @@ export function useBackgroundIndexing(
       return
     }
 
+    const isPdf = item.extension === 'pdf'
+    const activeSettings = settingsRef.current
+
     inFlightRef.current = true
     applyQueueUi({
       currentFileName: item.fileName,
       queuedCount: remaining,
+      indexingPdf: isPdf,
     })
 
+    let outcome: BackgroundIndexOutcome = 'skipped'
     try {
-      await indexFileRef.current(nextPath, { background: true })
+      if (isPdf) {
+        const maxBytes = activeSettings.backgroundPdfMaxSizeMb * 1024 * 1024
+        if (item.fileSizeBytes > maxBytes) {
+          console.log(
+            'PDF skipped due to size:',
+            item.fileName,
+            `${item.fileSizeBytes} bytes (max ${maxBytes})`,
+          )
+          outcome = await indexFileRef.current(nextPath, {
+            background: true,
+            skipWithError: `PDF exceeds maximum size (${activeSettings.backgroundPdfMaxSizeMb} MB)`,
+          })
+        } else {
+          console.log('PDF indexing started:', item.fileName, nextPath)
+          outcome = await indexFileRef.current(nextPath, { background: true })
+          if (outcome === 'indexed') {
+            console.log('PDF indexing completed:', item.fileName)
+          } else if (outcome === 'error') {
+            console.log('PDF indexing failed:', item.fileName)
+            console.log('Continuing queue after PDF failure')
+          }
+        }
+      } else {
+        outcome = await indexFileRef.current(nextPath, { background: true })
+      }
+
       if (generation !== cancelGenerationRef.current) return
     } catch (err) {
       console.warn('[Remy] Background index failed, continuing queue', err)
+      if (isPdf) {
+        console.log('PDF indexing failed:', item.fileName, err)
+        console.log('Continuing queue after PDF failure')
+      }
     } finally {
       attemptedPathsRef.current.add(normalized)
       inFlightRef.current = false
@@ -208,7 +258,8 @@ export function useBackgroundIndexing(
       queuedCount: queueRef.current.length,
     })
 
-    await new Promise((resolve) => window.setTimeout(resolve, INDEX_JOB_DELAY_MS))
+    const delayMs = getPostJobDelayMs(item, activeSettings)
+    await new Promise((resolve) => window.setTimeout(resolve, delayMs))
     if (generation !== cancelGenerationRef.current) return
     void processNextRef.current()
   }, [applyQueueUi, enqueueCandidates, scheduleProcessNext])
@@ -265,7 +316,15 @@ export function useBackgroundIndexing(
       window.clearTimeout(startupTimer)
       queueReadyRef.current = false
     }
-  }, [isActive, settings.backgroundIndexScope, applyQueueUi, kickWorker])
+  }, [
+    isActive,
+    settings.backgroundIndexScope,
+    settings.backgroundPdfIndexingEnabled,
+    settings.backgroundPdfMaxSizeMb,
+    settings.backgroundPdfDelaySec,
+    applyQueueUi,
+    kickWorker,
+  ])
 
   useEffect(() => {
     if (!isActive || !queueReadyRef.current) return
@@ -301,5 +360,6 @@ export function useBackgroundIndexing(
     currentFileName: queueUi.currentFileName,
     queuedCount: queueUi.queuedCount,
     indexedCount,
+    indexingPdf: queueUi.indexingPdf,
   }
 }

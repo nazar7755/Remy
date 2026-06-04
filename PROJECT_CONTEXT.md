@@ -81,7 +81,7 @@ flowchart LR
 ### Frontend
 
 - **`useFileScanner`**: Polls Downloads, Desktop, and Documents every 5s; polls clipboard every 2s when running in Tauri. Merges file + clipboard items into one timeline. After each file scan, asynchronously restores cached index text from disk (non-blocking UI). Exposes `indexFile` for manual and background indexing.
-- **`useBackgroundIndexing`**: After initial UI render (~200ms), enqueues indexable files with `indexStatus === 'idle'` and processes them one at a time via `indexFile`, with a 750ms delay between jobs. Respects Settings toggles for enable/disable and file-type scope (TXT / TXT+DOCX / TXT+DOCX+PDF). Skips already-indexed and failed files; re-queues after “Clear index”. Queue status shown in the sidebar and Settings.
+- **`useBackgroundIndexing`**: After initial UI render (~2s), enqueues indexable files with `indexStatus === 'idle'` and processes them **one at a time** via `indexFile`. TXT/DOCX: 5s between jobs, max 10MB. **PDF is off by default** — separate Settings toggle with max size (default 5MB), delay (default 10s), 60s Rust extraction timeout, and panic isolation. Failed PDFs get `indexStatus === 'error'` and are not retried in the same session. Queue status shown in the sidebar and Settings.
 - **`FileScanner` + adapters**: `TauriFileSystemAdapter` (production) or `MockFileSystemAdapter` (Vite-only browser dev).
 - **`contentSearch`**: Client-side filter by name, path, extension, type, source, and indexed/plain text.
 - **Navigation**: `Timeline`, `Memories`, `Favorites`, `Indexed`, and `Settings` are implemented; `Search` is routed in the shell but not built yet.
@@ -96,7 +96,7 @@ flowchart LR
 |---------|------|
 | `get_allowed_paths` | Resolve Downloads / Desktop / Documents via `dirs` |
 | `scan_all_memory_folders` | List supported files in those directories |
-| `index_file_content` | Extract text from `.txt`, `.pdf`, `.docx` (max ~200k chars) |
+| `index_file_content` | Extract text from `.txt`, `.pdf`, `.docx` (max ~200k chars). PDF runs in a isolated thread with **60s timeout** and **`catch_unwind`** so a bad PDF cannot crash the app. |
 | `poll_clipboard` / `get_clipboard_entries` | Track text clipboard (dedupe window 30s, max 500 entries); persisted to SQLite |
 | `index_file_content` | Extract text; reads/writes `file_index_cache` (invalidates on mtime/size change) |
 | `lookup_file_index_cache` | Batch restore cached index text for scanned paths (startup hydration) |
@@ -120,11 +120,11 @@ flowchart LR
 - **Indexed content source of truth** (read this when debugging clear/search/indexed views):
   - **Persistent store (Tauri)**: SQLite table `file_index_cache` — columns `file_path`, `content`, `file_mtime_ms`, `file_size`, `indexed_at_ms`. Written by `index_file_content`; wiped by `clear_indexed_content` or per-file `clear_file_index`. **Not** stored in `localStorage`.
   - **Runtime store (UI)**: React state `fileItems` in `useFileScanner`, merged into `items` (files + clipboard). Each file’s `content`, `indexStatus`, `indexedCharCount`, and `indexedAt` fields are what Timeline, Memories, Search, and Indexed read.
-  - **Hydration path**: After each folder scan, `lookup_file_index_cache` loads SQLite rows into `fileItems` via `applyIndexCache`. This can re-populate indexed state after a clear if hydration races — `clearAllIndexedContent` bumps a hydration epoch and re-checks it inside the `setFileItems` callback.
+  - **Hydration path**: After each folder scan, `lookup_file_index_cache` loads SQLite rows into `fileItems` via `applyIndexCache`.
   - **Indexed page filter**: `resolveIndexedItems(items)` → `isIndexedFile(item)` requires `indexStatus === 'indexed'` **and** non-empty `content`. Same `items` array powers Timeline/Memories search via `contentSearch.ts`.
-  - **Clear all indexed content** must: (1) stop background worker + set `backgroundIndexingEnabled: false`, (2) `DELETE FROM file_index_cache` (twice, bracketing in-flight index ops), (3) reset every file in `fileItems` to `indexStatus: 'idle'` with null content/metadata, (4) set `indexHydrationBlockedRef` for the session so scan hydration cannot re-apply cache. Settings **Index debug** shows React indexed count vs SQLite row count.
+  - **Failed indexing**: `indexStatus === 'error'` with `indexError` message on the memory item (UI label: Failed). Background queue skips non-`idle` files; attempted paths are remembered for the session so failures are not retried automatically.
 - **Local-first only** — no network, no cloud APIs.
-- **Settings**: Single row `app_settings` key `app_settings` stores JSON (`scan_*`, poll intervals, `clipboard_enabled`, `background_indexing_enabled`, `background_index_scope`). Defaults seeded on first DB open.
+- **Settings**: Single row `app_settings` key `app_settings` stores JSON (`scan_*`, poll intervals, `clipboard_enabled`, `background_indexing_enabled`, `background_index_scope`, `background_pdf_indexing_enabled`, `background_pdf_max_size_mb`, `background_pdf_delay_sec`). Defaults seeded on first DB open.
 - **Startup**: Clipboard hydrate runs in Tauri `setup` (fast SQLite read). Index cache hydrate runs in the frontend after the first folder scan via `lookup_file_index_cache` (async, does not block the initial render). Background indexing queue starts ~200ms after first paint (does not block startup).
 
 ## Data model

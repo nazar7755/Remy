@@ -98,14 +98,14 @@ function App() {
   )
 
   return (
-    <div className="flex min-h-svh">
+    <div className="flex h-svh overflow-hidden">
       <Sidebar
         activeSection={activeSection}
         onSectionChange={setActiveSection}
         indexingQueue={indexingQueue}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center border-b border-remy-border bg-remy-bg/80 px-5 backdrop-blur-md">
           <SearchBar
             value={globalQuery}
@@ -116,7 +116,7 @@ function App() {
           />
         </header>
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-6xl px-6 py-10">
             <header className="mb-8">
               <h1 className="text-3xl font-semibold tracking-tight text-remy-text">

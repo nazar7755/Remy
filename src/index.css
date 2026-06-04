@@ -16,14 +16,15 @@
 @layer base {
   html {
     color-scheme: dark;
+    @apply h-svh overflow-hidden;
   }
 
   body {
-    @apply m-0 min-h-svh bg-remy-bg font-sans text-remy-text antialiased;
+    @apply m-0 h-full overflow-hidden bg-remy-bg font-sans text-remy-text antialiased;
   }
 
   #root {
-    @apply min-h-svh;
+    @apply h-full overflow-hidden;
   }
 
   ::selection {

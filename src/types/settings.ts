@@ -1,5 +1,5 @@
-/** Which file types background indexing processes (txt always included). */
-export type BackgroundIndexScope = 'txt' | 'txt_docx' | 'txt_docx_pdf'
+/** Which non-PDF file types background indexing processes (txt always included). */
+export type BackgroundIndexScope = 'txt' | 'txt_docx'
 
 export interface AppSettings {
   scanDownloads: boolean
@@ -10,6 +10,12 @@ export interface AppSettings {
   clipboardEnabled: boolean
   backgroundIndexingEnabled: boolean
   backgroundIndexScope: BackgroundIndexScope
+  /** Separate toggle — PDF background indexing is off by default. */
+  backgroundPdfIndexingEnabled: boolean
+  /** Max PDF size for background indexing (MB). */
+  backgroundPdfMaxSizeMb: number
+  /** Delay between consecutive background PDF jobs (seconds). */
+  backgroundPdfDelaySec: number
 }
 
 export interface MemoryStatistics {
@@ -18,6 +24,16 @@ export interface MemoryStatistics {
   indexedFiles: number
   totalIndexedCharacters: number
 }
+
+export const DEFAULT_BACKGROUND_PDF_MAX_SIZE_MB = 5
+export const DEFAULT_BACKGROUND_PDF_DELAY_SEC = 10
+export const BACKGROUND_PDF_MIN_SIZE_MB = 1
+export const BACKGROUND_PDF_MAX_SIZE_MB = 50
+export const BACKGROUND_PDF_MIN_DELAY_SEC = 5
+export const BACKGROUND_PDF_MAX_DELAY_SEC = 120
+
+/** Frontend invoke timeout — slightly above the Rust PDF worker timeout. */
+export const PDF_INDEX_TIMEOUT_MS = 65_000
 
 export const DEFAULT_SETTINGS: AppSettings = {
   scanDownloads: true,
@@ -28,17 +44,19 @@ export const DEFAULT_SETTINGS: AppSettings = {
   clipboardEnabled: true,
   backgroundIndexingEnabled: false,
   backgroundIndexScope: 'txt_docx',
+  backgroundPdfIndexingEnabled: false,
+  backgroundPdfMaxSizeMb: DEFAULT_BACKGROUND_PDF_MAX_SIZE_MB,
+  backgroundPdfDelaySec: DEFAULT_BACKGROUND_PDF_DELAY_SEC,
 }
 
 export function isExtensionInBackgroundScope(
   extension: string,
   scope: BackgroundIndexScope,
 ): boolean {
+  if (extension === 'pdf') return false
   if (extension === 'txt') return true
   if (scope === 'txt') return false
-  if (extension === 'docx') return true
-  if (scope === 'txt_docx') return false
-  return extension === 'pdf'
+  return extension === 'docx'
 }
 
 export const FILE_POLL_MIN_MS = 2000
@@ -56,6 +74,14 @@ export function clampSettings(settings: AppSettings): AppSettings {
     clipboardPollIntervalMs: Math.min(
       CLIPBOARD_POLL_MAX_MS,
       Math.max(CLIPBOARD_POLL_MIN_MS, settings.clipboardPollIntervalMs),
+    ),
+    backgroundPdfMaxSizeMb: Math.min(
+      BACKGROUND_PDF_MAX_SIZE_MB,
+      Math.max(BACKGROUND_PDF_MIN_SIZE_MB, settings.backgroundPdfMaxSizeMb),
+    ),
+    backgroundPdfDelaySec: Math.min(
+      BACKGROUND_PDF_MAX_DELAY_SEC,
+      Math.max(BACKGROUND_PDF_MIN_DELAY_SEC, settings.backgroundPdfDelaySec),
     ),
   }
 }

@@ -86,7 +86,7 @@ export function Sidebar({
   indexingQueue,
 }: SidebarProps) {
   return (
-    <aside className="flex w-[220px] shrink-0 flex-col border-r border-remy-border bg-remy-surface">
+    <aside className="flex h-svh w-[220px] shrink-0 flex-col overflow-hidden border-r border-remy-border bg-remy-surface">
       <div className="flex h-14 items-center gap-2.5 border-b border-remy-border px-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-remy-accent to-violet-400 shadow-lg shadow-violet-500/25">
           <span className="text-xs font-bold text-white">R</span>
@@ -94,7 +94,7 @@ export function Sidebar({
         <span className="text-sm font-semibold tracking-tight">Remy</span>
       </div>
 
-      <nav className="flex-1 space-y-0.5 p-2" aria-label="Main">
+      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="Main">
         {navItems.map((item) => {
           const isActive = activeSection === item.id
           return (

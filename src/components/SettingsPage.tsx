@@ -13,6 +13,10 @@ import {
   CLIPBOARD_POLL_MIN_MS,
   FILE_POLL_MAX_MS,
   FILE_POLL_MIN_MS,
+  BACKGROUND_PDF_MIN_SIZE_MB,
+  BACKGROUND_PDF_MAX_SIZE_MB,
+  BACKGROUND_PDF_MIN_DELAY_SEC,
+  BACKGROUND_PDF_MAX_DELAY_SEC,
   type AppSettings,
   type BackgroundIndexScope,
   type MemoryStatistics,
@@ -165,8 +169,41 @@ function ScopeSelect({
     >
       <option value="txt">TXT only</option>
       <option value="txt_docx">TXT + DOCX</option>
-      <option value="txt_docx_pdf">TXT + DOCX + PDF</option>
     </select>
+  )
+}
+
+function MbInput({
+  valueMb,
+  minMb,
+  maxMb,
+  disabled,
+  onChange,
+}: {
+  valueMb: number
+  minMb: number
+  maxMb: number
+  disabled?: boolean
+  onChange: (mb: number) => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="number"
+        min={minMb}
+        max={maxMb}
+        step={1}
+        value={valueMb}
+        disabled={disabled}
+        onChange={(e) => {
+          const parsed = Number.parseInt(e.target.value, 10)
+          if (Number.isNaN(parsed)) return
+          onChange(parsed)
+        }}
+        className="w-16 rounded-md border border-remy-border bg-remy-elevated px-2 py-1.5 text-right text-sm text-remy-text focus:border-remy-accent focus:outline-none disabled:opacity-50"
+      />
+      <span className="text-xs text-remy-muted">MB</span>
+    </div>
   )
 }
 
@@ -367,7 +404,7 @@ export function SettingsPage({
 
       <SettingsSection
         title="Background indexing"
-        description="Off by default. When enabled, indexes eligible TXT/DOCX files (max 10MB each), one every 5 seconds."
+        description="Off by default. TXT/DOCX: max 10MB, one every 5 seconds. PDF is separate and off by default."
       >
         <SettingsRow
           label="Enable background indexing"
@@ -384,12 +421,57 @@ export function SettingsPage({
         </SettingsRow>
         <SettingsRow
           label="File types to index"
-          hint="Default: TXT + DOCX only (no PDF). Files over 10MB are skipped."
+          hint="TXT + DOCX by default. PDF uses the controls below."
         >
           <ScopeSelect
             value={settings.backgroundIndexScope}
             disabled={disabled || !settings.backgroundIndexingEnabled}
             onChange={(backgroundIndexScope) => patch({ backgroundIndexScope })}
+          />
+        </SettingsRow>
+        <SettingsRow
+          label="Enable PDF background indexing"
+          hint="Off by default — heavy PDFs are processed slowly with extra safety limits"
+        >
+          <Toggle
+            label="Enable PDF background indexing"
+            checked={settings.backgroundPdfIndexingEnabled}
+            disabled={disabled || !settings.backgroundIndexingEnabled}
+            onChange={(backgroundPdfIndexingEnabled) =>
+              patch({ backgroundPdfIndexingEnabled })
+            }
+          />
+        </SettingsRow>
+        <SettingsRow
+          label="Max PDF file size"
+          hint={`${BACKGROUND_PDF_MIN_SIZE_MB}–${BACKGROUND_PDF_MAX_SIZE_MB} MB — larger PDFs are skipped and marked failed`}
+        >
+          <MbInput
+            valueMb={settings.backgroundPdfMaxSizeMb}
+            minMb={BACKGROUND_PDF_MIN_SIZE_MB}
+            maxMb={BACKGROUND_PDF_MAX_SIZE_MB}
+            disabled={
+              disabled ||
+              !settings.backgroundIndexingEnabled ||
+              !settings.backgroundPdfIndexingEnabled
+            }
+            onChange={(backgroundPdfMaxSizeMb) => patch({ backgroundPdfMaxSizeMb })}
+          />
+        </SettingsRow>
+        <SettingsRow
+          label="Delay between PDF files"
+          hint={`${BACKGROUND_PDF_MIN_DELAY_SEC}–${BACKGROUND_PDF_MAX_DELAY_SEC} seconds after each PDF`}
+        >
+          <IntervalInput
+            valueMs={settings.backgroundPdfDelaySec * 1000}
+            minMs={BACKGROUND_PDF_MIN_DELAY_SEC * 1000}
+            maxMs={BACKGROUND_PDF_MAX_DELAY_SEC * 1000}
+            disabled={
+              disabled ||
+              !settings.backgroundIndexingEnabled ||
+              !settings.backgroundPdfIndexingEnabled
+            }
+            onChange={(ms) => patch({ backgroundPdfDelaySec: Math.round(ms / 1000) })}
           />
         </SettingsRow>
         {isTauri() && (

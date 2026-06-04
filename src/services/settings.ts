@@ -18,15 +18,23 @@ interface TauriAppSettingsDto {
   clipboard_enabled: boolean
   background_indexing_enabled?: boolean
   background_index_scope?: string
+  background_pdf_indexing_enabled?: boolean
+  background_pdf_max_size_mb?: number
+  background_pdf_delay_sec?: number
 }
 
-const VALID_SCOPES: BackgroundIndexScope[] = ['txt', 'txt_docx', 'txt_docx_pdf']
+const VALID_SCOPES: BackgroundIndexScope[] = ['txt', 'txt_docx']
 
-function parseBackgroundIndexScope(raw: string | undefined): BackgroundIndexScope {
-  if (raw && (VALID_SCOPES as readonly string[]).includes(raw)) {
-    return raw as BackgroundIndexScope
+function parseBackgroundIndexScope(
+  raw: string | undefined,
+): { scope: BackgroundIndexScope; enablePdf: boolean } {
+  if (raw === 'txt_docx_pdf') {
+    return { scope: 'txt_docx', enablePdf: true }
   }
-  return DEFAULT_SETTINGS.backgroundIndexScope
+  if (raw && (VALID_SCOPES as readonly string[]).includes(raw)) {
+    return { scope: raw as BackgroundIndexScope, enablePdf: false }
+  }
+  return { scope: DEFAULT_SETTINGS.backgroundIndexScope, enablePdf: false }
 }
 
 interface TauriMemoryStatisticsDto {
@@ -36,6 +44,7 @@ interface TauriMemoryStatisticsDto {
 }
 
 function fromTauriSettings(dto: TauriAppSettingsDto): AppSettings {
+  const parsedScope = parseBackgroundIndexScope(dto.background_index_scope)
   return clampSettings({
     scanDownloads: dto.scan_downloads,
     scanDesktop: dto.scan_desktop,
@@ -45,7 +54,14 @@ function fromTauriSettings(dto: TauriAppSettingsDto): AppSettings {
     clipboardEnabled: dto.clipboard_enabled,
     backgroundIndexingEnabled:
       dto.background_indexing_enabled ?? DEFAULT_SETTINGS.backgroundIndexingEnabled,
-    backgroundIndexScope: parseBackgroundIndexScope(dto.background_index_scope),
+    backgroundIndexScope: parsedScope.scope,
+    backgroundPdfIndexingEnabled:
+      dto.background_pdf_indexing_enabled ??
+      (parsedScope.enablePdf || DEFAULT_SETTINGS.backgroundPdfIndexingEnabled),
+    backgroundPdfMaxSizeMb:
+      dto.background_pdf_max_size_mb ?? DEFAULT_SETTINGS.backgroundPdfMaxSizeMb,
+    backgroundPdfDelaySec:
+      dto.background_pdf_delay_sec ?? DEFAULT_SETTINGS.backgroundPdfDelaySec,
   })
 }
 
@@ -60,6 +76,9 @@ function toTauriSettings(settings: AppSettings): TauriAppSettingsDto {
     clipboard_enabled: clamped.clipboardEnabled,
     background_indexing_enabled: clamped.backgroundIndexingEnabled,
     background_index_scope: clamped.backgroundIndexScope,
+    background_pdf_indexing_enabled: clamped.backgroundPdfIndexingEnabled,
+    background_pdf_max_size_mb: clamped.backgroundPdfMaxSizeMb,
+    background_pdf_delay_sec: clamped.backgroundPdfDelaySec,
   }
 }
 

@@ -5,15 +5,16 @@ interface IndexingQueueStatusProps {
   currentFileName: string | null
   queuedCount: number
   indexedCount: number
+  indexingPdf?: boolean
   compact?: boolean
 }
 
-function statusLabel(status: BackgroundQueueStatus): string {
+function statusLabel(status: BackgroundQueueStatus, indexingPdf: boolean): string {
   switch (status) {
     case 'disabled':
       return 'Disabled'
     case 'indexing':
-      return 'Indexing'
+      return indexingPdf ? 'Indexing PDF' : 'Indexing'
     default:
       return 'Idle'
   }
@@ -35,9 +36,10 @@ export function IndexingQueueStatus({
   currentFileName,
   queuedCount,
   indexedCount,
+  indexingPdf = false,
   compact = false,
 }: IndexingQueueStatusProps) {
-  const label = statusLabel(status)
+  const label = statusLabel(status, indexingPdf)
 
   if (compact) {
     return (

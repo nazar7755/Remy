@@ -1,10 +1,14 @@
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 use zip::ZipArchive;
 
 const INDEXABLE: &[&str] = &["txt", "pdf", "docx"];
 const MAX_CONTENT_CHARS: usize = 200_000;
+const PDF_EXTRACT_TIMEOUT_SECS: u64 = 60;
 
 pub fn is_indexable(extension: &str) -> bool {
     INDEXABLE.contains(&extension)
@@ -52,7 +56,34 @@ fn extract_txt(path: &Path) -> Result<String, String> {
 }
 
 fn extract_pdf(path: &Path) -> Result<String, String> {
-    pdf_extract::extract_text(path).map_err(|e| e.to_string())
+    let path_buf = path.to_path_buf();
+    let (tx, rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        let result = catch_pdf_extract(&path_buf);
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(Duration::from_secs(PDF_EXTRACT_TIMEOUT_SECS)) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!(
+            "PDF extraction timed out after {PDF_EXTRACT_TIMEOUT_SECS} seconds"
+        )),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Err("PDF extraction thread exited unexpectedly".to_string())
+        }
+    }
+}
+
+fn catch_pdf_extract(path: &PathBuf) -> Result<String, String> {
+    let path_for_panic = path.clone();
+    match std::panic::catch_unwind(move || pdf_extract::extract_text(&path_for_panic)) {
+        Ok(Ok(text)) => Ok(text),
+        Ok(Err(err)) => Err(err.to_string()),
+        Err(_) => Err(
+            "PDF extraction panicked (file may be corrupted or unsupported)".to_string(),
+        ),
+    }
 }
 
 fn extract_docx(path: &Path) -> Result<String, String> {

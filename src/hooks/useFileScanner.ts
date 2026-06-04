@@ -13,7 +13,9 @@ import {
   canIndexFile,
   clearFileIndex as clearFileIndexInvoke,
   indexFileContent,
+  pdfIndexTimeoutMs,
 } from '../services/contentIndexer'
+import type { BackgroundIndexOutcome } from '../services/indexingQueue'
 import {
   emptyIndexMetadata,
   indexMetadataFromContent,
@@ -40,8 +42,12 @@ export interface FileScannerState {
   refresh: () => Promise<void>
   indexFile: (
     filePath: string,
-    options?: { force?: boolean; background?: boolean },
-  ) => Promise<void>
+    options?: {
+      force?: boolean
+      background?: boolean
+      skipWithError?: string
+    },
+  ) => Promise<BackgroundIndexOutcome>
   clearFileIndex: (filePath: string) => Promise<void>
   clearClipboardItems: () => void
 }
@@ -179,8 +185,12 @@ export function useFileScanner(
   const indexFile = useCallback(
     async (
       filePath: string,
-      options?: { force?: boolean; background?: boolean },
-    ) => {
+      options?: {
+        force?: boolean
+        background?: boolean
+        skipWithError?: string
+      },
+    ): Promise<BackgroundIndexOutcome> => {
       const trimmedPath = filePath.trim()
       const isBackground = options?.background === true
 
@@ -188,7 +198,7 @@ export function useFileScanner(
         if (!isBackground) {
           console.warn('[Remy] Index skipped: empty file path')
         }
-        return
+        return 'skipped'
       }
 
       const target =
@@ -199,6 +209,19 @@ export function useFileScanner(
         target?.extension ??
         parseExtension(trimmedPath.split(/[/\\]/).pop() ?? trimmedPath)
 
+      const isPdf = extension === 'pdf'
+
+      if (options?.skipWithError) {
+        if (!isBackground) {
+          setIndexNotice(options.skipWithError)
+          setFileItems((prev) => markIndexing(prev, trimmedPath))
+        }
+        setFileItems((prev) =>
+          applyIndexResult(prev, trimmedPath, null, options.skipWithError ?? 'Skipped'),
+        )
+        return 'error'
+      }
+
       if (!canIndexFile(extension)) {
         if (!isBackground) {
           console.warn('[Remy] Index skipped: unsupported extension', {
@@ -206,14 +229,14 @@ export function useFileScanner(
             extension,
           })
         }
-        return
+        return 'skipped'
       }
 
       if (target && isClipboardItem(target)) {
         if (!isBackground) {
           console.warn('[Remy] Index skipped: clipboard item', trimmedPath)
         }
-        return
+        return 'skipped'
       }
 
       if (!target && !isBackground) {
@@ -223,11 +246,14 @@ export function useFileScanner(
         )
       }
 
-      if (indexingPathsRef.current.has(trimmedPath)) return
+      if (indexingPathsRef.current.has(trimmedPath)) return 'skipped'
 
-      if (!isBackground) {
+      if (isPdf) {
+        console.log('PDF indexing started:', target?.fileName ?? trimmedPath, trimmedPath)
+      } else if (!isBackground) {
         console.log('Indexing started for path:', trimmedPath)
       }
+
       indexingPathsRef.current.add(trimmedPath)
 
       if (!isBackground) {
@@ -239,18 +265,19 @@ export function useFileScanner(
         const content = await indexFileContent(
           trimmedPath,
           target?.fileName ?? trimmedPath.split(/[/\\]/).pop() ?? trimmedPath,
-          { force: options?.force },
+          {
+            force: options?.force,
+            timeoutMs: isPdf ? pdfIndexTimeoutMs() : undefined,
+          },
         )
-        if (!isBackground) {
-          console.log('Tauri indexing result:', {
-            path: trimmedPath,
-            chars: content?.length ?? 0,
-          })
-        }
+        let outcome: BackgroundIndexOutcome = 'indexed'
         setFileItems((prev) => {
           const next = applyIndexResult(prev, trimmedPath, content, null)
+          const updated = findFileItemByPath(next, trimmedPath)
+          if (updated?.indexStatus === 'error') {
+            outcome = 'error'
+          }
           if (!isBackground) {
-            const updated = findFileItemByPath(next, trimmedPath)
             if (updated) {
               console.log('Memory item updated after indexing', {
                 path: updated.filePath,
@@ -266,16 +293,34 @@ export function useFileScanner(
           }
           return next
         })
+
+        if (isPdf) {
+          if (outcome === 'indexed') {
+            console.log('PDF indexing completed:', target?.fileName ?? trimmedPath)
+          } else {
+            console.log('PDF indexing failed:', target?.fileName ?? trimmedPath)
+          }
+        } else if (!isBackground) {
+          console.log('Tauri indexing result:', {
+            path: trimmedPath,
+            chars: content?.length ?? 0,
+          })
+        }
+
+        return outcome
       } catch (err) {
         const message =
           err instanceof Error ? err.message : 'Content indexing failed'
-        if (!isBackground) {
+        if (isPdf) {
+          console.log('PDF indexing failed:', target?.fileName ?? trimmedPath, message)
+        } else if (!isBackground) {
           console.error('Tauri indexing result:', { path: trimmedPath, error: message })
           setIndexNotice(message)
         }
         setFileItems((prev) =>
           applyIndexResult(prev, trimmedPath, null, message),
         )
+        return 'error'
       } finally {
         indexingPathsRef.current.delete(trimmedPath)
       }
