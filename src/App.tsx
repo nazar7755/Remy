@@ -4,7 +4,6 @@ import { resolveIndexedItems } from './lib/indexedItems'
 import { FavoritesPage } from './components/FavoritesPage'
 import { IndexedPage } from './components/IndexedPage'
 import { FileMemoryTimeline } from './components/FileMemoryTimeline'
-import { MemoriesPage } from './components/MemoriesPage'
 import { SearchBar } from './components/SearchBar'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
@@ -21,13 +20,8 @@ const SECTION_META: Record<
 > = {
   Timeline: {
     title: 'Remy',
-    subtitle: 'Your second memory — files and clipboard',
+    subtitle: 'Browse and search everything Remy remembers',
     searchPlaceholder: 'Search by name, path, extension, source, or text…',
-  },
-  Memories: {
-    title: 'Memories',
-    subtitle: 'Browse everything Remy remembers',
-    searchPlaceholder: 'Search memories…',
   },
   Favorites: {
     title: 'Favorites',
@@ -38,11 +32,6 @@ const SECTION_META: Record<
     title: 'Indexed',
     subtitle: 'Files with extracted text ready to search',
     searchPlaceholder: 'Search indexed content…',
-  },
-  Search: {
-    title: 'Search',
-    subtitle: 'Find anything you have saved',
-    searchPlaceholder: 'Search…',
   },
   Settings: {
     title: 'Settings',
@@ -61,7 +50,6 @@ function App() {
   const scannerEnabled =
     isTauri() ||
     activeSection === 'Timeline' ||
-    activeSection === 'Memories' ||
     activeSection === 'Favorites' ||
     activeSection === 'Indexed' ||
     activeSection === 'Settings'
@@ -135,7 +123,6 @@ function App() {
                 />
                 <FileMemoryTimeline
                   items={safeItems}
-                  folderPaths={memoryScan.folderPaths}
                   loading={memoryScan.loading}
                   error={memoryScan.error}
                   isMocked={memoryScan.isMocked}
@@ -149,25 +136,9 @@ function App() {
                   onReindexContent={(path) =>
                     void memoryScan.indexFile(path, { force: true })
                   }
-                  onClearIndex={(path) => void memoryScan.clearFileIndex(path)}
                   onToggleFavorite={(item) => void favorites.toggleFavorite(item)}
                 />
               </>
-            )}
-
-            {activeSection === 'Memories' && (
-              <MemoriesPage
-                items={safeItems}
-                loading={memoryScan.loading}
-                error={memoryScan.error}
-                query={globalQuery}
-                onIndexContent={(path) => void memoryScan.indexFile(path)}
-                onReindexContent={(path) =>
-                  void memoryScan.indexFile(path, { force: true })
-                }
-                onClearIndex={(path) => void memoryScan.clearFileIndex(path)}
-                onToggleFavorite={(item) => void favorites.toggleFavorite(item)}
-              />
             )}
 
             {activeSection === 'Favorites' && (
@@ -182,7 +153,6 @@ function App() {
                 onReindexContent={(path) =>
                   void memoryScan.indexFile(path, { force: true })
                 }
-                onClearIndex={(path) => void memoryScan.clearFileIndex(path)}
               />
             )}
 
@@ -197,7 +167,6 @@ function App() {
                 onReindexContent={(path) =>
                   void memoryScan.indexFile(path, { force: true })
                 }
-                onClearIndex={(path) => void memoryScan.clearFileIndex(path)}
               />
             )}
 
@@ -207,12 +176,6 @@ function App() {
                 memoryScan={memoryScan}
                 indexingQueue={indexingQueue}
               />
-            )}
-
-            {activeSection === 'Search' && (
-              <p className="text-sm text-remy-muted">
-                This section is not built yet.
-              </p>
             )}
           </div>
         </main>

@@ -25,7 +25,6 @@ interface FavoritesPageProps {
   onToggleFavorite: (item: MemoryItem) => void
   onIndexContent: (filePath: string) => void
   onReindexContent: (filePath: string) => void
-  onClearIndex: (filePath: string) => void
 }
 
 export function FavoritesPage({
@@ -37,7 +36,6 @@ export function FavoritesPage({
   onToggleFavorite,
   onIndexContent,
   onReindexContent,
-  onClearIndex,
 }: FavoritesPageProps) {
   const [localQuery, setLocalQuery] = useState('')
   const [viewMode, setViewMode] = useState<MemoriesViewMode>(() =>
@@ -51,7 +49,7 @@ export function FavoritesPage({
   const effectiveQuery = query.trim() || localQuery.trim()
 
   useEffect(() => {
-    saveMemoriesPreferences({ viewMode, sort })
+    saveMemoriesPreferences({ ...loadMemoriesPreferences(), viewMode, sort })
   }, [viewMode, sort])
 
   const displayed = useMemo(() => {
@@ -147,7 +145,7 @@ export function FavoritesPage({
             <p className="text-sm text-remy-muted">
               {effectiveQuery
                 ? 'No favorites match your search.'
-                : 'No favorites yet. Star items from Timeline or Memories.'}
+                : 'No favorites yet. Star items from Timeline.'}
             </p>
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -195,7 +193,6 @@ export function FavoritesPage({
             onToggleFavorite={() => onToggleFavorite(selected)}
             onIndexContent={onIndexContent}
             onReindexContent={onReindexContent}
-            onClearIndex={onClearIndex}
           />
         )}
       </div>

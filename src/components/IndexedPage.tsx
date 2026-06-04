@@ -24,7 +24,6 @@ interface IndexedPageProps {
   onToggleFavorite: (item: MemoryItem) => void
   onIndexContent: (filePath: string) => void
   onReindexContent: (filePath: string) => void
-  onClearIndex: (filePath: string) => void
 }
 
 export function IndexedPage({
@@ -35,7 +34,6 @@ export function IndexedPage({
   onToggleFavorite,
   onIndexContent,
   onReindexContent,
-  onClearIndex,
 }: IndexedPageProps) {
   const items = indexedItems ?? []
   const [localQuery, setLocalQuery] = useState('')
@@ -50,7 +48,7 @@ export function IndexedPage({
   const effectiveQuery = query.trim() || localQuery.trim()
 
   useEffect(() => {
-    saveMemoriesPreferences({ viewMode, sort })
+    saveMemoriesPreferences({ ...loadMemoriesPreferences(), viewMode, sort })
   }, [viewMode, sort])
 
   const displayed = useMemo(() => {
@@ -195,7 +193,6 @@ export function IndexedPage({
             onToggleFavorite={() => onToggleFavorite(selected)}
             onIndexContent={onIndexContent}
             onReindexContent={onReindexContent}
-            onClearIndex={onClearIndex}
           />
         )}
       </div>

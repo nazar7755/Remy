@@ -1,15 +1,34 @@
 import { useEffect, useMemo, useState } from 'react'
-import { searchMemoryItems } from '../lib/contentSearch'
-import { sourceBadgeStyles } from '../lib/sourceStyles'
+import {
+  itemMatchesQuery,
+  resolveSnippet,
+} from '../lib/contentSearch'
 import { formatLastUpdated } from '../lib/formatLastUpdated'
-import type { FolderPaths, MemoryItem, SourceFilter } from '../types/memoryItem'
+import {
+  itemMatchesFolderFilter,
+  itemMatchesTypeFilter,
+} from '../lib/memoriesFilters'
+import { sortMemoryItems } from '../lib/memoriesSort'
+import {
+  loadMemoriesPreferences,
+  saveMemoriesPreferences,
+} from '../services/memoriesPreferences'
+import {
+  MEMORIES_SORT_OPTIONS,
+  type MemoriesSortOption,
+  type MemoriesViewMode,
+  type TimelineFolderFilter,
+  type TimelineTypeFilter,
+} from '../types/memoriesPage'
+import type { MemoryItem } from '../types/memoryItem'
 import { FileDetailsPanel } from './FileDetailsPanel'
+import { MemoriesListRow } from './MemoriesListRow'
 import { MemoryItemCard } from './MemoryItemCard'
-import { SourceFilterBar } from './SourceFilter'
+import { TypeFilterSelect } from './MemoryTypeFilter'
+import { FolderFilterBar } from './SourceFilter'
 
 interface FileMemoryTimelineProps {
   items: MemoryItem[]
-  folderPaths: FolderPaths | null
   loading: boolean
   error: string | null
   isMocked: boolean
@@ -21,13 +40,14 @@ interface FileMemoryTimelineProps {
   onRefresh: () => void
   onIndexContent: (filePath: string) => void
   onReindexContent: (filePath: string) => void
-  onClearIndex: (filePath: string) => void
   onToggleFavorite: (item: MemoryItem) => void
 }
 
+const controlSelectClassName =
+  'rounded-md border border-remy-border bg-remy-elevated px-2.5 py-1.5 text-xs text-remy-text transition-colors hover:border-zinc-600 focus:border-remy-accent/60 focus:ring-2 focus:ring-remy-accent/20 focus:outline-none'
+
 export function FileMemoryTimeline({
   items,
-  folderPaths,
   loading,
   error,
   isMocked,
@@ -39,92 +59,146 @@ export function FileMemoryTimeline({
   onRefresh,
   onIndexContent,
   onReindexContent,
-  onClearIndex,
   onToggleFavorite,
 }: FileMemoryTimelineProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('All')
-  const q = query.trim()
-  const searchResults = useMemo(
-    () => searchMemoryItems(items, q, sourceFilter),
-    [items, q, sourceFilter],
+  const [folderFilter, setFolderFilter] = useState<TimelineFolderFilter>('All')
+  const [typeFilter, setTypeFilter] = useState<TimelineTypeFilter>('All')
+  const [viewMode, setViewMode] = useState<MemoriesViewMode>(() =>
+    loadMemoriesPreferences().viewMode,
   )
-
-  const selected =
-    searchResults.find((r) => r.item.id === selectedId)?.item ??
-    items.find((item) => item.id === selectedId) ??
-    null
+  const [sort, setSort] = useState<MemoriesSortOption>(() =>
+    loadMemoriesPreferences().sort,
+  )
+  const q = query.trim()
 
   useEffect(() => {
-    if (selectedId && !items.some((item) => item.id === selectedId)) {
-      setSelectedId(null)
-    }
-  }, [items, selectedId])
+    saveMemoriesPreferences({ viewMode, sort })
+  }, [viewMode, sort])
+
+  const displayed = useMemo(() => {
+    const filtered = items.filter(
+      (item) =>
+        itemMatchesFolderFilter(item, folderFilter) &&
+        itemMatchesTypeFilter(item, typeFilter) &&
+        itemMatchesQuery(item, q),
+    )
+    const withSnippets = filtered.map((item) => ({
+      item,
+      snippet: resolveSnippet(item, q),
+    }))
+    const sorted = sortMemoryItems(
+      withSnippets.map((r) => r.item),
+      sort,
+    )
+    const snippetById = new Map(
+      withSnippets.map((r) => [r.item.id, r.snippet]),
+    )
+    return sorted.map((item) => ({
+      item,
+      snippet: snippetById.get(item.id) ?? null,
+    }))
+  }, [items, folderFilter, typeFilter, q, sort])
+
+  const selected = useMemo(() => {
+    if (!selectedId) return null
+    if (!items.some((item) => item.id === selectedId)) return null
+    return displayed.find((r) => r.item.id === selectedId)?.item ?? null
+  }, [selectedId, displayed, items])
 
   useEffect(() => {
     setSelectedId(null)
-  }, [query, sourceFilter])
+  }, [query, folderFilter, typeFilter, sort, viewMode])
+
+  const hasActiveFilters =
+    q.length > 0 || folderFilter !== 'All' || typeFilter !== 'All'
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xs font-medium tracking-wider text-remy-muted uppercase">
-            Memory timeline
-          </h2>
-          {folderPaths && (
-            <div className="mt-2 space-y-0.5 font-mono text-[10px] text-remy-muted">
-              <p>Downloads · {folderPaths.downloads}</p>
-              <p>Desktop · {folderPaths.desktop}</p>
-              <p>Documents · {folderPaths.documents}</p>
-            </div>
-          )}
-          {isWatching && (
-            <div className="mt-2 space-y-0.5 text-xs text-remy-muted">
-              <p className="flex items-center gap-1.5">
-                <span
-                  className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]"
-                  aria-hidden
-                />
-                Watching Downloads, Desktop, Documents, and clipboard
-              </p>
-              <p>
-                Last updated:{' '}
-                {lastUpdatedAt
-                  ? formatLastUpdated(lastUpdatedAt)
-                  : loading
-                    ? '…'
-                    : '—'}
-              </p>
-              <p className="text-remy-subtle">
-                Index txt, pdf, and docx from the details panel to search inside files
-              </p>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
+    <section className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-xs text-remy-muted">
           {isMocked ? (
-            <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-medium text-amber-200">
-              Mock data · run npm run tauri:dev for real files
-            </span>
-          ) : (
-            <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-200">
-              Live filesystem
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={loading}
-            className="rounded-md border border-remy-border bg-remy-elevated px-2.5 py-1.5 text-xs text-remy-subtle transition-colors hover:border-zinc-600 hover:text-remy-text disabled:opacity-50"
-          >
-            {loading ? 'Scanning…' : 'Rescan'}
-          </button>
+            <p className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]"
+                aria-hidden
+              />
+              Preview mode
+            </p>
+          ) : isWatching ? (
+            <p className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]"
+                aria-hidden
+              />
+              Live monitoring active
+            </p>
+          ) : null}
+          <p className="mt-0.5 text-remy-muted">
+            Last updated:{' '}
+            {lastUpdatedAt
+              ? formatLastUpdated(lastUpdatedAt)
+              : loading
+                ? '…'
+                : '—'}
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          className="rounded-md border border-remy-border bg-remy-elevated px-2.5 py-1.5 text-xs text-remy-subtle transition-colors hover:border-zinc-600 hover:text-remy-text disabled:opacity-50"
+        >
+          {loading ? 'Scanning…' : 'Rescan'}
+        </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <SourceFilterBar value={sourceFilter} onChange={setSourceFilter} />
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-remy-border pb-4">
+        <FolderFilterBar value={folderFilter} onChange={setFolderFilter} />
+
+        <div className="flex flex-wrap items-center gap-3">
+          <TypeFilterSelect value={typeFilter} onChange={setTypeFilter} />
+
+          <div
+            className="inline-flex rounded-lg border border-remy-border bg-remy-elevated/50 p-0.5"
+            role="group"
+            aria-label="View mode"
+          >
+            {(['list', 'grid'] as const).map((mode) => {
+              const active = viewMode === mode
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setViewMode(mode)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                    active
+                      ? 'bg-remy-elevated text-remy-text shadow-sm ring-1 ring-remy-border'
+                      : 'text-remy-muted hover:text-remy-subtle'
+                  }`}
+                >
+                  {mode}
+                </button>
+              )
+            })}
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-remy-muted">
+            <span className="font-medium">Sort</span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as MemoriesSortOption)}
+              className={controlSelectClassName}
+            >
+              {MEMORIES_SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {error && (
@@ -147,50 +221,51 @@ export function FileMemoryTimeline({
         <div className="min-w-0 flex-1">
           {loading && items.length === 0 ? (
             <p className="text-sm text-remy-muted">Scanning memory folders…</p>
-          ) : searchResults.length === 0 ? (
+          ) : displayed.length === 0 ? (
             <p className="text-sm text-remy-muted">
-              {q || sourceFilter !== 'All'
-                ? 'No files match your filters.'
+              {hasActiveFilters
+                ? 'No items match your filters.'
                 : 'No supported files found.'}
             </p>
+          ) : viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {displayed.map(({ item, snippet }) => (
+                <MemoryItemCard
+                  key={item.id}
+                  item={item}
+                  isSelected={selectedId === item.id}
+                  searchQuery={q}
+                  contentSnippet={snippet}
+                  onToggleFavorite={() => onToggleFavorite(item)}
+                  onSelect={() =>
+                    setSelectedId((id) => (id === item.id ? null : item.id))
+                  }
+                />
+              ))}
+            </div>
           ) : (
-            <div className="relative space-y-3">
-              <div
-                className="absolute top-2 bottom-2 left-[17px] w-px bg-gradient-to-b from-remy-border via-remy-border/50 to-transparent"
-                aria-hidden
-              />
-              {searchResults.map(({ item, snippet }) => {
-                const dotStyle = sourceBadgeStyles[item.source].dot
-                return (
-                  <div key={item.id} className="relative pl-10">
-                    <div
-                      className={`absolute top-5 left-[13px] h-2 w-2 rounded-full border-2 border-remy-bg ${dotStyle} ${
-                        selectedId === item.id ? 'ring-2 ring-remy-accent/40' : ''
-                      }`}
-                      aria-hidden
-                    />
-                    <MemoryItemCard
-                      item={item}
-                      isSelected={selectedId === item.id}
-                      searchQuery={q}
-                      contentSnippet={snippet}
-                      onToggleFavorite={() => onToggleFavorite(item)}
-                      onSelect={() =>
-                        setSelectedId((id) => (id === item.id ? null : item.id))
-                      }
-                    />
-                  </div>
-                )
-              })}
+            <div className="space-y-2">
+              {displayed.map(({ item, snippet }) => (
+                <MemoriesListRow
+                  key={item.id}
+                  item={item}
+                  isSelected={selectedId === item.id}
+                  searchQuery={q}
+                  contentSnippet={snippet}
+                  onToggleFavorite={() => onToggleFavorite(item)}
+                  onSelect={() =>
+                    setSelectedId((id) => (id === item.id ? null : item.id))
+                  }
+                />
+              ))}
             </div>
           )}
 
           <p className="mt-6 text-xs text-remy-muted">
-            {searchResults.length} of {items.length} file
+            {displayed.length} of {items.length} item
             {items.length === 1 ? '' : 's'}
-            {sourceFilter !== 'All' ? ` · ${sourceFilter}` : ''}
-            {' · '}
-            pdf, png, jpg, jpeg, webp, txt, docx, xlsx, csv, zip
+            {typeFilter !== 'All' ? ` · ${typeFilter}` : ''}
+            {folderFilter !== 'All' ? ` · ${folderFilter}` : ''}
           </p>
         </div>
 
@@ -201,7 +276,6 @@ export function FileMemoryTimeline({
             onToggleFavorite={() => onToggleFavorite(selected)}
             onIndexContent={onIndexContent}
             onReindexContent={onReindexContent}
-            onClearIndex={onClearIndex}
           />
         )}
       </div>

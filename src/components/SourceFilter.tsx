@@ -1,21 +1,21 @@
-import type { SourceFilter } from '../types/memoryItem'
-import { MEMORY_SOURCES } from '../types/memoryItem'
+import {
+  TIMELINE_FOLDER_FILTERS,
+  type TimelineFolderFilter,
+} from '../types/memoriesPage'
 
-const FILTERS: SourceFilter[] = ['All', ...MEMORY_SOURCES]
-
-interface SourceFilterBarProps {
-  value: SourceFilter
-  onChange: (filter: SourceFilter) => void
+interface FolderFilterBarProps {
+  value: TimelineFolderFilter
+  onChange: (filter: TimelineFolderFilter) => void
 }
 
-export function SourceFilterBar({ value, onChange }: SourceFilterBarProps) {
+export function FolderFilterBar({ value, onChange }: FolderFilterBarProps) {
   return (
     <div
       className="flex flex-wrap gap-1.5"
       role="tablist"
-      aria-label="Filter by source"
+      aria-label="Filter by folder"
     >
-      {FILTERS.map((filter) => {
+      {TIMELINE_FOLDER_FILTERS.map((filter) => {
         const active = value === filter
         return (
           <button

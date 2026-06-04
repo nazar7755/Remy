@@ -18,7 +18,6 @@ interface FileDetailsPanelProps {
   onClose: () => void
   onIndexContent?: (filePath: string) => void
   onReindexContent?: (filePath: string) => void
-  onClearIndex?: (filePath: string) => void
   onToggleFavorite?: (item: MemoryItem) => void
 }
 
@@ -42,6 +41,46 @@ function DetailRow({ label, value, mono = false }: DetailRowProps) {
     </div>
   )
 }
+
+const PATH_PREVIEW_MAX_LENGTH = 52
+
+function compactPathPreview(path: string | null | undefined): string | null {
+  if (!path) return null
+  if (path.length > PATH_PREVIEW_MAX_LENGTH) return null
+  if (path.split(/[/\\]/).some((segment) => segment.length > 28)) return null
+  return path
+}
+
+function LocationRow({
+  source,
+  filePath,
+}: {
+  source: string | null | undefined
+  filePath: string | null | undefined
+}) {
+  const preview = compactPathPreview(filePath)
+  const locationLabel = source?.trim() || 'Unknown'
+  return (
+    <div className="grid grid-cols-[88px_1fr] gap-3 py-2">
+      <dt className="text-[11px] font-medium tracking-wide text-remy-muted uppercase">
+        Location
+      </dt>
+      <dd>
+        <p className="text-sm text-remy-text">{locationLabel}</p>
+        {preview && (
+          <p
+            className="mt-0.5 truncate font-mono text-[10px] text-remy-muted"
+            title={filePath ?? undefined}
+          >
+            {preview}
+          </p>
+        )}
+      </dd>
+    </div>
+  )
+}
+
+const defaultItemStyle = memoryItemTypeStyles.Document
 
 interface ActionButtonProps {
   label: string
@@ -88,41 +127,44 @@ const documentIcon = (
   />
 )
 
-const trashIcon = (
-  <path
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-  />
-)
-
 export function FileDetailsPanel({
   item,
   onClose,
   onIndexContent,
   onReindexContent,
-  onClearIndex,
   onToggleFavorite,
 }: FileDetailsPanelProps) {
   const [actionError, setActionError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+
+  const fileName = item?.fileName?.trim() || 'Untitled'
+  const filePath = item?.filePath ?? ''
+  const source = item?.source ?? 'Unknown'
+  const extension = item?.extension ?? ''
+  const fileSize = item?.fileSize ?? '—'
+  const createdAt = item?.createdAt ?? '—'
+  const indexStatus = item?.indexStatus ?? 'idle'
+  const indexedAt = item?.indexedAt ?? null
+
   const desktop = isTauri()
-  const clipboard = isClipboardItem(item)
-  const style = memoryItemTypeStyles[item.type]
+  const clipboard = item ? isClipboardItem(item) : false
+  const style =
+    item?.type != null
+      ? (memoryItemTypeStyles[item.type] ?? defaultItemStyle)
+      : defaultItemStyle
   const indexable =
-    !clipboard && canIndexFile(item.extension) && !!onIndexContent
-  const isLoading = item.indexStatus === 'loading'
-  const isIndexed = item.indexStatus === 'indexed'
-  const isFailed = item.indexStatus === 'error'
+    !!item &&
+    !clipboard &&
+    !!extension &&
+    canIndexFile(extension) &&
+    !!onIndexContent
+  const isLoading = indexStatus === 'loading'
+  const isIndexed = indexStatus === 'indexed'
+  const isFailed = indexStatus === 'error'
   const showIndexButton =
-    indexable && !isLoading && (item.indexStatus === 'idle' || isFailed)
+    indexable && !isLoading && (indexStatus === 'idle' || isFailed)
   const showReindexButton =
     indexable && !isLoading && !!onReindexContent && isIndexed
-  const showClearIndexButton =
-    indexable &&
-    !isLoading &&
-    !!onClearIndex &&
-    (isIndexed || isFailed)
 
   const runAction = useCallback(async (action: () => Promise<void>) => {
     setActionError(null)
@@ -136,15 +178,21 @@ export function FileDetailsPanel({
 
   const handleCopy = useCallback(async () => {
     await runAction(async () => {
-      if (clipboard && item.content) {
+      if (clipboard && item?.content) {
         await copyText(item.content)
-      } else {
-        await copyPath(item.filePath)
+      } else if (filePath) {
+        await copyPath(filePath)
       }
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
     })
-  }, [clipboard, item.content, item.filePath, runAction])
+  }, [clipboard, item?.content, filePath, runAction])
+
+  useEffect(() => {
+    if (!item?.id) {
+      onClose()
+    }
+  }, [item, onClose])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -154,10 +202,14 @@ export function FileDetailsPanel({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
+  if (!item?.id) {
+    return null
+  }
+
   const indexStatusValue =
     isFailed && item.indexError
-      ? `${formatIndexStatusLabel(item.indexStatus)} — ${item.indexError}`
-      : formatIndexStatusLabel(item.indexStatus)
+      ? `${formatIndexStatusLabel(indexStatus)} — ${item.indexError}`
+      : formatIndexStatusLabel(indexStatus)
 
   return (
     <aside
@@ -208,7 +260,7 @@ export function FileDetailsPanel({
           <div className="min-w-0 flex-1">
             <div className="flex items-start gap-2">
               <h3 className="min-w-0 flex-1 text-sm font-semibold leading-snug text-remy-text">
-                {item.fileName}
+                {fileName}
               </h3>
               {onToggleFavorite && (
                 <FavoriteStarButton
@@ -221,11 +273,11 @@ export function FileDetailsPanel({
               <span
                 className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${style.badge}`}
               >
-                {item.type}
+                {item.type ?? 'Document'}
               </span>
-              {!clipboard && (
+              {!clipboard && extension && (
                 <span className="inline-flex rounded-md bg-remy-elevated px-1.5 py-0.5 font-mono text-[10px] text-remy-muted uppercase">
-                  .{item.extension}
+                  .{extension}
                 </span>
               )}
             </div>
@@ -234,7 +286,11 @@ export function FileDetailsPanel({
       </div>
 
       <dl className="max-h-[280px] divide-y divide-remy-border/60 overflow-y-auto px-4">
-        <DetailRow label="Source" value={item.source} />
+        {clipboard ? (
+          <DetailRow label="Source" value={source} />
+        ) : (
+          <LocationRow source={source} filePath={filePath} />
+        )}
         {clipboard ? (
           <DetailRow
             label="Copied text"
@@ -243,13 +299,14 @@ export function FileDetailsPanel({
           />
         ) : (
           <>
-            <DetailRow label="Filename" value={item.fileName} />
-            <DetailRow label="Extension" value={`.${item.extension}`} mono />
-            <DetailRow label="Size" value={item.fileSize} />
-            <DetailRow label="Path" value={item.filePath} mono />
+            <DetailRow label="Filename" value={fileName} />
+            {extension && (
+              <DetailRow label="Extension" value={`.${extension}`} mono />
+            )}
+            <DetailRow label="Size" value={fileSize} />
           </>
         )}
-        <DetailRow label="Created" value={item.createdAt} />
+        <DetailRow label="Created" value={createdAt} />
         {indexable && (
           <>
             <DetailRow label="Index status" value={indexStatusValue} />
@@ -259,8 +316,8 @@ export function FileDetailsPanel({
                 value={item.indexedCharCount.toLocaleString()}
               />
             )}
-            {isIndexed && item.indexedAt && (
-              <DetailRow label="Indexed at" value={item.indexedAt} />
+            {isIndexed && indexedAt && (
+              <DetailRow label="Indexed at" value={indexedAt} />
             )}
           </>
         )}
@@ -286,13 +343,7 @@ export function FileDetailsPanel({
               label="Index Content"
               disabled={!desktop}
               onClick={() => {
-                console.log('Index button clicked', {
-                  filePath: item.filePath,
-                  fileName: item.fileName,
-                  extension: item.extension,
-                  indexStatus: item.indexStatus,
-                })
-                onIndexContent!(item.filePath)
+                if (filePath) onIndexContent!(filePath)
               }}
               icon={
                 <svg
@@ -312,7 +363,9 @@ export function FileDetailsPanel({
             <ActionButton
               label="Reindex"
               disabled={!desktop}
-              onClick={() => onReindexContent!(item.filePath)}
+              onClick={() => {
+                if (filePath) onReindexContent!(filePath)
+              }}
               icon={
                 <svg
                   className="h-4 w-4"
@@ -331,25 +384,6 @@ export function FileDetailsPanel({
               }
             />
           )}
-          {showClearIndexButton && (
-            <ActionButton
-              label="Clear index"
-              disabled={!desktop}
-              onClick={() => void runAction(async () => onClearIndex!(item.filePath))}
-              icon={
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={1.5}
-                  aria-hidden
-                >
-                  {trashIcon}
-                </svg>
-              }
-            />
-          )}
           {indexable && isLoading && (
             <p className="px-3 py-2 text-xs text-remy-subtle">Indexing content…</p>
           )}
@@ -359,7 +393,9 @@ export function FileDetailsPanel({
                 label="Open File"
                 hint="↵"
                 disabled={!desktop}
-                onClick={() => void runAction(() => openFile(item.filePath))}
+                onClick={() => {
+                  if (filePath) void runAction(() => openFile(filePath))
+                }}
                 icon={
                   <svg
                     className="h-4 w-4"
@@ -380,9 +416,11 @@ export function FileDetailsPanel({
               <ActionButton
                 label={revealLabel()}
                 disabled={!desktop}
-                onClick={() =>
-                  void runAction(() => revealInFileManager(item.filePath))
-                }
+                onClick={() => {
+                  if (filePath) {
+                    void runAction(() => revealInFileManager(filePath))
+                  }
+                }}
                 icon={
                   <svg
                     className="h-4 w-4"
@@ -405,7 +443,7 @@ export function FileDetailsPanel({
           <ActionButton
             label={copied ? 'Copied' : clipboard ? 'Copy Text' : 'Copy Path'}
             hint="⌘C"
-            disabled={clipboard ? !item.content : !desktop}
+            disabled={clipboard ? !item.content : !desktop || !filePath}
             onClick={() => void handleCopy()}
             icon={
               <svg

@@ -42,23 +42,19 @@ export function IndexingQueueStatus({
   const label = statusLabel(status, indexingPdf)
 
   if (compact) {
+    const line =
+      status === 'disabled'
+        ? 'Indexing disabled'
+        : `Indexing active · ${indexedCount} indexed`
+
     return (
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] font-medium text-remy-subtle">Background indexing</p>
-          <span className={`text-[10px] font-medium ${statusTone(status)}`}>{label}</span>
-        </div>
-        {currentFileName && status === 'indexing' && (
-          <p className="truncate text-[10px] text-remy-muted" title={currentFileName}>
-            {currentFileName}
-          </p>
-        )}
-        {status !== 'disabled' && (
-          <p className="text-[10px] text-remy-muted">
-            {queuedCount} queued · {indexedCount} indexed
-          </p>
-        )}
-      </div>
+      <p
+        className={`text-[10px] leading-snug ${
+          status === 'disabled' ? 'text-remy-muted' : 'text-remy-subtle'
+        }`}
+      >
+        {line}
+      </p>
     )
   }
 

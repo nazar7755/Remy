@@ -332,6 +332,20 @@ export function SettingsPage({
             onChange={(scanDocuments) => patch({ scanDocuments })}
           />
         </SettingsRow>
+        {memoryScan.folderPaths ? (
+          <div className="space-y-1.5 py-4">
+            <p className="text-xs font-medium text-remy-subtle">Watched paths</p>
+            <div className="space-y-1 font-mono text-[11px] text-remy-muted">
+              <p>Downloads · {memoryScan.folderPaths.downloads}</p>
+              <p>Desktop · {memoryScan.folderPaths.desktop}</p>
+              <p>Documents · {memoryScan.folderPaths.documents}</p>
+            </div>
+          </div>
+        ) : (
+          <p className="pb-4 text-xs text-remy-muted">
+            Folder paths are shown when running the desktop app.
+          </p>
+        )}
         {noFoldersEnabled && (
           <p className="pb-4 text-xs text-amber-400/90">
             All folder scans are off — Remy will not track files until you enable

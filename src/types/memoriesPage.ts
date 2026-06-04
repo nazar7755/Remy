@@ -1,5 +1,37 @@
 export type MemoriesViewMode = 'list' | 'grid'
 
+export type TimelineFolderFilter =
+  | 'All'
+  | 'Downloads'
+  | 'Desktop'
+  | 'Documents'
+  | 'Files'
+
+export const TIMELINE_FOLDER_FILTERS: TimelineFolderFilter[] = [
+  'All',
+  'Downloads',
+  'Desktop',
+  'Documents',
+  'Files',
+]
+
+export type TimelineTypeFilter =
+  | 'All'
+  | 'Images'
+  | 'PDF'
+  | 'DOCX'
+  | 'TXT'
+  | 'Clipboard'
+
+export const TIMELINE_TYPE_FILTERS: TimelineTypeFilter[] = [
+  'All',
+  'Images',
+  'PDF',
+  'DOCX',
+  'TXT',
+  'Clipboard',
+]
+
 export type MemoriesSortOption =
   | 'newest'
   | 'oldest'
@@ -8,24 +40,9 @@ export type MemoriesSortOption =
   | 'size-desc'
   | 'size-asc'
 
-export type MemoriesTypeFilter =
-  | 'All'
-  | 'Files'
-  | 'Clipboard'
-  | 'PDF'
-  | 'DOCX'
-  | 'TXT'
-  | 'Images'
+export type MemoriesTypeFilter = TimelineTypeFilter
 
-export const MEMORIES_TYPE_FILTERS: MemoriesTypeFilter[] = [
-  'All',
-  'Files',
-  'Clipboard',
-  'PDF',
-  'DOCX',
-  'TXT',
-  'Images',
-]
+export const MEMORIES_TYPE_FILTERS = TIMELINE_TYPE_FILTERS
 
 export const MEMORIES_SORT_OPTIONS: {
   value: MemoriesSortOption
