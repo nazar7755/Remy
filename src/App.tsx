@@ -4,16 +4,17 @@ import { resolveIndexedItems } from './lib/indexedItems'
 import { FavoritesPage } from './components/FavoritesPage'
 import { IndexedPage } from './components/IndexedPage'
 import { FileMemoryTimeline } from './components/FileMemoryTimeline'
+import { OnboardingModal } from './components/OnboardingModal'
 import { SearchBar } from './components/SearchBar'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { useBackgroundIndexing } from './hooks/useBackgroundIndexing'
 import { useFavorites } from './hooks/useFavorites'
 import { useFileScanner } from './hooks/useFileScanner'
+import { useOnboarding } from './hooks/useOnboarding'
 import { usePreviewEmptyStates } from './hooks/usePreviewEmptyStates'
 import { useSettings } from './hooks/useSettings'
 import { useWatchedFolders } from './hooks/useWatchedFolders'
-import { hasNoMemories } from './lib/onboarding'
 import { isTauri } from './lib/tauri'
 import type { NavSection } from './types/memory'
 
@@ -96,14 +97,20 @@ function App() {
   })
 
   const previewEmpty = previewEmptyStates.enabled
-  const showWelcome = hasNoMemories(
-    safeItems,
-    memoryScan.loading,
-    previewEmpty,
-  )
+
+  const onboarding = useOnboarding({ memoryScan, favorites })
 
   return (
     <div className="flex h-svh overflow-hidden">
+      <OnboardingModal
+        open={onboarding.open}
+        scanning={memoryScan.loading}
+        addingFolder={watchedFolders.addingFolder}
+        onScanNow={() => void memoryScan.refresh()}
+        onAddFolder={() => void watchedFolders.addFolder()}
+        onDismiss={onboarding.complete}
+      />
+
       <Sidebar
         activeSection={activeSection}
         onSectionChange={setActiveSection}
@@ -152,7 +159,6 @@ function App() {
                   addingFolder={watchedFolders.addingFolder}
                   foldersDisabled={settingsState.loading || settingsState.saving}
                   folderError={watchedFolders.folderError}
-                  showWelcome={showWelcome}
                   previewEmpty={previewEmpty}
                   onAddFolder={() => void watchedFolders.addFolder()}
                   onRemoveCustomFolder={(path) => void watchedFolders.removeFolder(path)}

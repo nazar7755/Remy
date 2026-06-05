@@ -8,6 +8,7 @@ import { countWatchedFolders } from '../lib/watchedFolders'
 import type { FileScannerState } from '../hooks/useFileScanner'
 import type { BackgroundIndexingState } from '../hooks/useBackgroundIndexing'
 import type { usePreviewEmptyStates } from '../hooks/usePreviewEmptyStates'
+import { resetOnboardingCompleted } from '../lib/onboardingStorage'
 import type { SettingsState } from '../hooks/useSettings'
 import { IndexingQueueStatus } from './IndexingQueueStatus'
 import {
@@ -496,6 +497,18 @@ export function SettingsPage({
               checked={previewEmptyStates.enabled}
               onChange={(enabled) => previewEmptyStates.setEnabled(enabled)}
             />
+          </SettingsRow>
+          <SettingsRow
+            label="Reset onboarding"
+            hint="Clears the first-launch flag so the welcome modal can appear again on next empty load."
+          >
+            <button
+              type="button"
+              onClick={() => resetOnboardingCompleted()}
+              className="rounded-md border border-remy-border bg-remy-elevated px-3 py-1.5 text-xs font-medium text-remy-subtle transition-colors hover:border-zinc-600 hover:text-remy-text"
+            >
+              Reset
+            </button>
           </SettingsRow>
         </SettingsSection>
       )}

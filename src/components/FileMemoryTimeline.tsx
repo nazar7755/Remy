@@ -28,8 +28,7 @@ import { TimelineToolbar } from './TimelineToolbar'
 import {
   primaryButtonClassName,
   secondaryButtonClassName,
-  WelcomeOnboarding,
-} from './WelcomeOnboarding'
+} from '../lib/uiButtons'
 
 interface FileMemoryTimelineProps {
   items: MemoryItem[]
@@ -51,7 +50,6 @@ interface FileMemoryTimelineProps {
   onIndexContent: (filePath: string) => void
   onReindexContent: (filePath: string) => void
   onToggleFavorite: (item: MemoryItem) => void
-  showWelcome?: boolean
   previewEmpty?: boolean
 }
 
@@ -72,7 +70,6 @@ export function FileMemoryTimeline({
   onIndexContent,
   onReindexContent,
   onToggleFavorite,
-  showWelcome = false,
   previewEmpty = false,
 }: FileMemoryTimelineProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -146,15 +143,6 @@ export function FileMemoryTimeline({
 
   return (
     <section className="space-y-2">
-      {showWelcome && (
-        <WelcomeOnboarding
-          onScanNow={onRefresh}
-          onAddFolder={onAddFolder}
-          scanning={loading}
-          addingFolder={addingFolder}
-        />
-      )}
-
       <TimelineToolbar
         folderFilter={folderFilter}
         customFolders={customWatchedFolders}
@@ -202,7 +190,7 @@ export function FileMemoryTimeline({
           ) : displayed.length === 0 ? (
             hasActiveFilters ? (
               <p className="text-sm text-remy-muted">No items match your filters.</p>
-            ) : showWelcome ? null : (
+            ) : (
               <EmptyState
                 title="No memories yet"
                 description="Add a folder or enable scanning to start building your memory."

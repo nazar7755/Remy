@@ -76,7 +76,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [ ] Menu bar / system tray presence
 - [ ] Export memories (JSON/Markdown archive)
 - [ ] Exclude lists (paths, apps, sensitive patterns)
-- [x] First-launch welcome onboarding (Timeline; Scan now / Add Folder)
+- [x] First-launch welcome onboarding (one-time modal; Scan now / Add Folder)
 - [ ] macOS sandbox / permission onboarding flow
 - [ ] Windows & Linux parity testing and installers
 - [ ] Automated tests: Rust indexer unit tests, frontend mapper/search tests

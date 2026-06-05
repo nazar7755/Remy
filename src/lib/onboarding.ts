@@ -1,12 +1,19 @@
-import type { MemoryItem } from '../types/memoryItem'
+export interface FirstLaunchInput {
+  fileCount: number
+  clipboardEntryCount: number
+  favoriteCount: number
+  loading: boolean
+  favoritesLoading: boolean
+  onboardingCompleted: boolean
+}
 
-/** True when Remy has no memories to show (files + clipboard). */
-export function hasNoMemories(
-  items: MemoryItem[],
-  loading: boolean,
-  previewEmpty: boolean,
-): boolean {
-  if (previewEmpty) return true
-  if (loading) return false
-  return items.length === 0
+/** True only on a pristine install: no files, clipboard, or favorites, and not yet dismissed. */
+export function shouldShowOnboarding(input: FirstLaunchInput): boolean {
+  if (input.onboardingCompleted) return false
+  if (input.loading || input.favoritesLoading) return false
+  return (
+    input.fileCount === 0 &&
+    input.clipboardEntryCount === 0 &&
+    input.favoriteCount === 0
+  )
 }
