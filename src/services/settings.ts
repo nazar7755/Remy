@@ -154,3 +154,32 @@ export async function clearIndexedContent(): Promise<void> {
   if (!isTauri()) return
   await tauriInvoke('clear_indexed_content')
 }
+
+export interface GlobalHotkeyStatus {
+  shortcut: string
+  registered: boolean
+  error: string | null
+}
+
+interface TauriGlobalHotkeyStatusDto {
+  shortcut: string
+  registered: boolean
+  error?: string | null
+}
+
+export async function fetchGlobalHotkeyStatus(): Promise<GlobalHotkeyStatus> {
+  if (!isTauri()) {
+    return {
+      shortcut: 'Cmd + Shift + Space',
+      registered: false,
+      error: null,
+    }
+  }
+
+  const dto = await tauriInvoke<TauriGlobalHotkeyStatusDto>('get_global_hotkey_status')
+  return {
+    shortcut: dto.shortcut,
+    registered: dto.registered,
+    error: dto.error ?? null,
+  }
+}

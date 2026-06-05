@@ -3,10 +3,26 @@ mod launch_at_login;
 mod clipboard_monitor;
 mod commands;
 mod content_indexer;
+mod global_hotkey;
 mod persistence;
 mod tray;
 
 use tauri::Manager;
+
+fn register_core_plugins(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
+    let builder = builder
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(launch_at_login::autostart_plugin());
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
+
+    builder
+}
 
 fn register_watched_scopes_from_settings(app: &tauri::AppHandle) -> Result<(), String> {
     let store = app.state::<persistence::RemyStore>();
@@ -36,15 +52,10 @@ fn register_watched_scopes_from_settings(app: &tauri::AppHandle) -> Result<(), S
 pub fn run() {
     let store = persistence::RemyStore::open().expect("failed to open Remy local store");
 
-    tauri::Builder::default()
+    register_core_plugins(tauri::Builder::default())
         .manage(clipboard_monitor::ClipboardMonitor::default())
         .manage(store)
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(launch_at_login::autostart_plugin())
+        .manage(global_hotkey::GlobalHotkeyState::new())
         .setup(|app| {
             if let Ok(entries) = app.state::<persistence::RemyStore>().load_clipboard_entries() {
                 let _ = app
@@ -62,6 +73,7 @@ pub fn run() {
             if let Err(err) = tray::setup_tray(&app.handle()) {
                 eprintln!("failed to create tray icon: {err}");
             }
+            global_hotkey::setup(&app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -87,6 +99,7 @@ pub fn run() {
             commands::settings::get_memory_statistics,
             commands::settings::clear_clipboard_history,
             commands::settings::clear_indexed_content,
+            global_hotkey::get_global_hotkey_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Remy")

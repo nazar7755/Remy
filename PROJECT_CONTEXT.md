@@ -21,7 +21,7 @@ Tagline (in-app): *Your second memory — files and clipboard.*
 |-------|--------|
 | **UI** | React 19, TypeScript, Tailwind CSS 4, Vite 8 |
 | **Shell** | Tauri 2 (Rust) — `src-tauri/` — features: `protocol-asset`, `tray-icon` |
-| **Plugins** | `tauri-plugin-fs`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager`, `tauri-plugin-dialog`, `tauri-plugin-notification`, `tauri-plugin-autostart` (macOS launch at login) |
+| **Plugins** | `tauri-plugin-fs`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager`, `tauri-plugin-dialog`, `tauri-plugin-notification`, `tauri-plugin-autostart` (macOS launch at login), `tauri-plugin-global-shortcut` (desktop global hotkey) |
 | **Rust deps** | `pdf-extract`, `zip` + `quick-xml` (DOCX), `arboard` (clipboard polling) |
 
 ## Repository layout
@@ -42,6 +42,7 @@ Remy/
 │   │   ├── content_indexer.rs
 │   │   ├── background_mode.rs   # hide-on-close, prevent exit, dock reopen
 │   │   ├── launch_at_login.rs   # macOS Launch Agent autostart, --background-launch
+│   │   ├── global_hotkey.rs     # Cmd+Shift+Space → show window + focus search
 │   │   └── tray.rs              # macOS menu bar / system tray icon + menu
 │   └── tauri.conf.json     # `assetProtocol` scope for image thumbnails (Downloads/Desktop/Documents)
 ├── package.json
@@ -111,21 +112,24 @@ flowchart LR
 | `clear_file_index` | Remove one file’s cached index (per-file “Clear index”) |
 | `get_favorites` / `set_favorite` | Persist pinned memories (`memory_id` + metadata snapshot JSON) |
 | `clear_clipboard_history` / `clear_indexed_content` | Privacy / recovery — clear clipboard history or all cached index text |
+| `get_global_hotkey_status` | Whether `Cmd + Shift + Space` registered successfully (for Settings warning) |
 
-**Background mode & menu bar (no new invoke commands):**
+**Background mode, menu bar & global hotkey:**
 
 | Module | Role |
 |--------|------|
 | `background_mode.rs` | On window close (when `run_in_background_when_closed`): `prevent_close`, hide window, one-time system notification; `ExitRequested` without quit code → `prevent_exit`; macOS Dock click → show main window |
 | `launch_at_login.rs` | macOS Launch Agent via `tauri-plugin-autostart`; registers login item with `--background-launch` arg; hides main window on autostart launch; syncs login item when `launch_at_login` setting changes |
 | `tray.rs` | Menu bar icon (bundled app icon, template on macOS); menu: Open Remy, Scan now, background indexing toggle, stats, Quit; emits `tray-scan-now` and `settings-changed` to the webview |
+| `global_hotkey.rs` | Registers `Command+Shift+Space` via `tauri-plugin-global-shortcut`; on press calls `show_main_window` and emits `focus-global-search`; registration errors stored for Settings (no crash) |
 
-**Tauri events (tray → frontend):**
+**Tauri events (Rust → frontend):**
 
 | Event | Frontend handler | Effect |
 |-------|------------------|--------|
 | `tray-scan-now` | `App.tsx` | Calls `memoryScan.refresh()` (same as Timeline “Scan now”) |
 | `settings-changed` | `useSettings` | Reloads settings from SQLite after tray toggles background indexing |
+| `focus-global-search` | `App.tsx` | Focuses and selects the header global search input (after global hotkey or future callers) |
 
 Background capture (file poll, clipboard poll, indexing queue) stays in the React webview. Hiding the window does **not** destroy the webview, so existing `setInterval` loops keep running unchanged.
 
@@ -186,8 +190,9 @@ Unified shape for files and clipboard snippets:
 - **Background mode (Phase 1)**: closing the window hides Remy instead of quitting (setting on by default); one-time system notification on first hide; file/clipboard/indexing polling continues in the hidden webview
 - **Launch at login (macOS)**: optional setting (off by default); registers a Launch Agent login item via `tauri-plugin-autostart`; autostart passes `--background-launch` so the main window stays hidden (menu bar tray only)
 - **Menu bar tray (macOS)**: Remy icon in the menu bar when running; menu with Open Remy, Scan now, background indexing toggle, live stats (indexed files + clipboard entries), and Quit Remy
+- **Global hotkey (macOS/desktop)**: `Cmd + Shift + Space` shows and focuses Remy from anywhere while the app is running (hidden, menu-bar-only, or in background); focuses the header search bar. Settings → Shortcuts displays the binding; warns if registration failed (e.g. shortcut taken by another app)
 - Mock timeline when running `npm run dev` without Tauri
-- **Settings** page: default folder scan toggles, poll intervals, clipboard privacy, startup (launch at login + run in background when closed), background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status — custom folders are managed on **Timeline**
+- **Settings** page: default folder scan toggles, poll intervals, clipboard privacy, shortcuts (read-only display), startup (launch at login + run in background when closed), background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status — custom folders are managed on **Timeline**
 
 ## Development
 
@@ -228,6 +233,14 @@ Production builds omit the Developer section.
 3. **Open from tray** — Tray → **Open Remy** (or Dock click) shows the main window.
 4. **Disable** — Settings → Startup → turn off *Launch Remy at login*. Remy is removed from Login Items; next login does not start Remy automatically.
 5. **Manual simulate** — Quit Remy, then from Terminal run the built app with `--background-launch` (same flag the login item uses); window should stay hidden.
+
+### Testing global hotkey (macOS Tauri only)
+
+1. **While hidden** — Close the main window (background mode on). Press **Cmd + Shift + Space**. Remy window should appear, come to front, and the header search input should be focused with its text selected.
+2. **Menu bar only** — Quit and relaunch with `--background-launch` (or log in with launch-at-login). Press **Cmd + Shift + Space** — same behavior without clicking the tray first.
+3. **While visible** — With Remy already open, press **Cmd + Shift + Space** — window stays visible; search input receives focus.
+4. **Settings** — Settings → Shortcuts shows *Open Remy Search: Cmd + Shift + Space*. If another app owns the shortcut, an amber warning appears (app keeps running).
+5. **Conflict check** — If registration fails, verify no crash; tray, polling, and indexing still work.
 
 ## Explicit non-goals (for now)
 

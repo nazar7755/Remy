@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   clearClipboardHistory,
+  fetchGlobalHotkeyStatus,
   fetchPersistedStatistics,
+  type GlobalHotkeyStatus,
 } from '../services/settings'
 import { isTauri } from '../lib/tauri'
 import { countWatchedFolders } from '../lib/watchedFolders'
@@ -227,6 +229,7 @@ export function SettingsPage({
   const [clearing, setClearing] = useState<'clipboard' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+  const [hotkeyStatus, setHotkeyStatus] = useState<GlobalHotkeyStatus | null>(null)
 
   const refreshStats = useCallback(async () => {
     const persisted = await fetchPersistedStatistics()
@@ -249,6 +252,10 @@ export function SettingsPage({
   useEffect(() => {
     void refreshStats()
   }, [refreshStats])
+
+  useEffect(() => {
+    void fetchGlobalHotkeyStatus().then(setHotkeyStatus)
+  }, [])
 
   const patch = useCallback(
     (partial: Partial<AppSettings>) => {
@@ -402,6 +409,28 @@ export function SettingsPage({
             {clearing === 'clipboard' ? 'Clearing…' : 'Clear history'}
           </button>
         </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Shortcuts"
+        description="Global keyboard shortcuts while Remy is running."
+      >
+        <SettingsRow
+          label="Open Remy Search"
+          hint="Show Remy and focus search from anywhere on macOS"
+        >
+          <kbd className="inline-flex items-center gap-1 rounded border border-remy-border bg-remy-elevated px-2 py-1 font-mono text-xs text-remy-text">
+            <span>⌘</span>
+            <span>⇧</span>
+            <span>Space</span>
+          </kbd>
+        </SettingsRow>
+        {hotkeyStatus && !hotkeyStatus.registered && hotkeyStatus.error && (
+          <p className="pb-4 text-xs text-amber-400/90">
+            Could not register {hotkeyStatus.shortcut}. Another app may already
+            be using this shortcut.
+          </p>
+        )}
       </SettingsSection>
 
       <SettingsSection

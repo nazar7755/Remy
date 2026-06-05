@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { resolveFavoriteItems } from './lib/favorites'
 import { resolveIndexedItems } from './lib/indexedItems'
@@ -49,6 +49,7 @@ function App() {
   const [activeSection, setActiveSection] = useState<NavSection>('Timeline')
   const [globalQuery, setGlobalQuery] = useState('')
   const [contentQuery, setContentQuery] = useState('')
+  const globalSearchRef = useRef<HTMLInputElement>(null)
 
   const settingsState = useSettings()
   const previewEmptyStates = usePreviewEmptyStates()
@@ -77,15 +78,29 @@ function App() {
   useEffect(() => {
     if (!isTauri()) return
 
-    let unlisten: (() => void) | undefined
+    const unlisteners: Array<() => void> = []
+
     void listen('tray-scan-now', () => {
       void refreshScan()
     }).then((fn) => {
-      unlisten = fn
+      unlisteners.push(fn)
+    })
+
+    void listen('focus-global-search', () => {
+      requestAnimationFrame(() => {
+        const input = globalSearchRef.current
+        if (!input) return
+        input.focus()
+        input.select()
+      })
+    }).then((fn) => {
+      unlisteners.push(fn)
     })
 
     return () => {
-      unlisten?.()
+      for (const unlisten of unlisteners) {
+        unlisten()
+      }
     }
   }, [refreshScan])
 
@@ -138,6 +153,7 @@ function App() {
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center border-b border-remy-border bg-remy-bg/80 px-5 backdrop-blur-md">
           <SearchBar
+            ref={globalSearchRef}
             value={globalQuery}
             onChange={setGlobalQuery}
             placeholder="Search across all memories…"

@@ -1,3 +1,5 @@
+import { forwardRef } from 'react'
+
 interface SearchBarProps {
   value?: string
   onChange?: (value: string) => void
@@ -6,13 +8,16 @@ interface SearchBarProps {
   size?: 'sm' | 'md'
 }
 
-export function SearchBar({
-  value = '',
-  onChange,
-  placeholder = 'Search memories…',
-  className = '',
-  size = 'md',
-}: SearchBarProps) {
+export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(function SearchBar(
+  {
+    value = '',
+    onChange,
+    placeholder = 'Search memories…',
+    className = '',
+    size = 'md',
+  },
+  ref,
+) {
   const sizeClasses =
     size === 'sm'
       ? 'h-8 text-xs'
@@ -35,6 +40,7 @@ export function SearchBar({
         />
       </svg>
       <input
+        ref={ref}
         type="search"
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
@@ -47,4 +53,4 @@ export function SearchBar({
       </kbd>
     </div>
   )
-}
+})
