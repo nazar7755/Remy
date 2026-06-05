@@ -73,7 +73,8 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 ## Phase 3 — Power user & quality
 
 - [ ] Global shortcut to open Remy (Raycast-style launcher)
-- [ ] Menu bar / system tray presence
+- [x] **Background mode** — hide window on close (default on); keep file/clipboard/indexing alive; one-time notification; Settings toggle
+- [x] Menu bar / system tray presence (macOS menu bar icon with Open, Scan now, indexing toggle, stats, Quit)
 - [ ] Export memories (JSON/Markdown archive)
 - [ ] Exclude lists (paths, apps, sensitive patterns)
 - [x] First-launch welcome onboarding (one-time modal; Scan now / Add Folder)

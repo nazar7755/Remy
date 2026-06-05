@@ -1,7 +1,9 @@
+mod background_mode;
 mod clipboard_monitor;
 mod commands;
 mod content_indexer;
 mod persistence;
+mod tray;
 
 use tauri::Manager;
 
@@ -40,6 +42,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             if let Ok(entries) = app.state::<persistence::RemyStore>().load_clipboard_entries() {
                 let _ = app
@@ -47,6 +50,12 @@ pub fn run() {
                     .restore(entries);
             }
             let _ = register_watched_scopes_from_settings(&app.handle());
+            if let Some(window) = app.get_webview_window("main") {
+                background_mode::attach_window_handler(&window);
+            }
+            if let Err(err) = tray::setup_tray(&app.handle()) {
+                eprintln!("failed to create tray icon: {err}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -73,6 +82,9 @@ pub fn run() {
             commands::settings::clear_clipboard_history,
             commands::settings::clear_indexed_content,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Remy");
+        .build(tauri::generate_context!())
+        .expect("error while building Remy")
+        .run(|app_handle, event| {
+            background_mode::handle_run_event(app_handle, &event);
+        });
 }

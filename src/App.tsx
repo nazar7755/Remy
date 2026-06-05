@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import { resolveFavoriteItems } from './lib/favorites'
 import { resolveIndexedItems } from './lib/indexedItems'
 import { FavoritesPage } from './components/FavoritesPage'
@@ -70,6 +71,23 @@ function App() {
     memoryScan.indexFile,
     scannerEnabled,
   )
+
+  const refreshScan = memoryScan.refresh
+
+  useEffect(() => {
+    if (!isTauri()) return
+
+    let unlisten: (() => void) | undefined
+    void listen('tray-scan-now', () => {
+      void refreshScan()
+    }).then((fn) => {
+      unlisten = fn
+    })
+
+    return () => {
+      unlisten?.()
+    }
+  }, [refreshScan])
 
   const safeItems = memoryScan.items ?? []
 

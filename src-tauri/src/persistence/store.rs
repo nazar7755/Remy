@@ -155,6 +155,29 @@ impl RemyStore {
             .clamp())
     }
 
+    pub fn load_app_meta_flag(&self, key: &str) -> Result<bool, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let value: Option<String> = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .ok();
+        Ok(value.as_deref() == Some("1"))
+    }
+
+    pub fn mark_app_meta_flag(&self, key: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?1, '1')
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn clear_clipboard_entries(&self) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM clipboard_entries", [])

@@ -20,8 +20,8 @@ Tagline (in-app): *Your second memory — files and clipboard.*
 | Layer | Stack |
 |-------|--------|
 | **UI** | React 19, TypeScript, Tailwind CSS 4, Vite 8 |
-| **Shell** | Tauri 2 (Rust) — `src-tauri/` |
-| **Plugins** | `tauri-plugin-fs`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager`, `tauri-plugin-dialog` |
+| **Shell** | Tauri 2 (Rust) — `src-tauri/` — features: `protocol-asset`, `tray-icon` |
+| **Plugins** | `tauri-plugin-fs`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager`, `tauri-plugin-dialog`, `tauri-plugin-notification` |
 | **Rust deps** | `pdf-extract`, `zip` + `quick-xml` (DOCX), `arboard` (clipboard polling) |
 
 ## Repository layout
@@ -39,7 +39,9 @@ Remy/
 │   │   ├── commands/       # Tauri invoke handlers
 │   │   ├── persistence/    # SQLite local store (clipboard + index cache)
 │   │   ├── clipboard_monitor.rs
-│   │   └── content_indexer.rs
+│   │   ├── content_indexer.rs
+│   │   ├── background_mode.rs   # hide-on-close, prevent exit, dock reopen
+│   │   └── tray.rs              # macOS menu bar / system tray icon + menu
 │   └── tauri.conf.json     # `assetProtocol` scope for image thumbnails (Downloads/Desktop/Documents)
 ├── package.json
 ├── PROJECT_CONTEXT.md      # This file
@@ -89,7 +91,7 @@ flowchart LR
 - **Indexed page**: Filtered view of live items with `indexStatus === 'indexed'` and extracted text (txt/pdf/docx from all scan sources); no source filters.
 - **`useFavorites`**: Independent favorites collection in SQLite (`favorites` table: `memory_id` + JSON snapshot per pin); `useFileScanner` marks live items with `isFavorite`; Favorites page uses `resolveFavoriteItems()` to merge live scan data with saved snapshots — no duplicate rows.
 - **Memories page**: Database-style browse of all items (list/grid, type filters, sort, search); preferences (view mode, sort) persist in `localStorage`. Timeline remains the chronological activity feed with source filters unchanged.
-- **`useSettings`**: Loads/saves app preferences (default folder toggles, custom watch folder paths, poll intervals, clipboard privacy, background indexing) via SQLite in Tauri or `localStorage` in browser mock.
+- **`useSettings`**: Loads/saves app preferences (default folder toggles, custom watch folder paths, poll intervals, clipboard privacy, background indexing, run in background when window closed) via SQLite in Tauri or `localStorage` in browser mock. Listens for `settings-changed` events from the tray menu to reload after tray toggles background indexing.
 
 ### Backend (Rust)
 
@@ -109,6 +111,22 @@ flowchart LR
 | `get_favorites` / `set_favorite` | Persist pinned memories (`memory_id` + metadata snapshot JSON) |
 | `clear_clipboard_history` / `clear_indexed_content` | Privacy / recovery — clear clipboard history or all cached index text |
 
+**Background mode & menu bar (no new invoke commands):**
+
+| Module | Role |
+|--------|------|
+| `background_mode.rs` | On window close (when `run_in_background_when_closed`): `prevent_close`, hide window, one-time system notification; `ExitRequested` without quit code → `prevent_exit`; macOS Dock click → show main window |
+| `tray.rs` | Menu bar icon (bundled app icon, template on macOS); menu: Open Remy, Scan now, background indexing toggle, stats, Quit; emits `tray-scan-now` and `settings-changed` to the webview |
+
+**Tauri events (tray → frontend):**
+
+| Event | Frontend handler | Effect |
+|-------|------------------|--------|
+| `tray-scan-now` | `App.tsx` | Calls `memoryScan.refresh()` (same as Timeline “Scan now”) |
+| `settings-changed` | `useSettings` | Reloads settings from SQLite after tray toggles background indexing |
+
+Background capture (file poll, clipboard poll, indexing queue) stays in the React webview. Hiding the window does **not** destroy the webview, so existing `setInterval` loops keep running unchanged.
+
 ### Local persistence (Phase 1.2)
 
 | Store | Location | Contents |
@@ -124,7 +142,7 @@ flowchart LR
   - **Indexed page filter**: `resolveIndexedItems(items)` → `isIndexedFile(item)` requires `indexStatus === 'indexed'` **and** non-empty `content`. Same `items` array powers Timeline/Memories search via `contentSearch.ts`.
   - **Failed indexing**: `indexStatus === 'error'` with `indexError` message on the memory item (UI label: Failed). Background queue skips non-`idle` files; attempted paths are remembered for the session so failures are not retried automatically.
 - **Local-first only** — no network, no cloud APIs.
-- **Settings**: Single row `app_settings` key `app_settings` stores JSON (`scan_*`, `custom_watched_folders`, poll intervals, `clipboard_enabled`, `background_indexing_enabled`, `background_index_scope`, `background_pdf_indexing_enabled`, `background_pdf_max_size_mb`, `background_pdf_delay_sec`). Defaults seeded on first DB open.
+- **Settings**: Single row `app_settings` key `app_settings` stores JSON (`scan_*`, `custom_watched_folders`, poll intervals, `clipboard_enabled`, `background_indexing_enabled`, `background_index_scope`, `background_pdf_indexing_enabled`, `background_pdf_max_size_mb`, `background_pdf_delay_sec`, `run_in_background_when_closed`). Defaults seeded on first DB open. Meta flag `background_close_notification_shown` tracks the one-time hide notification.
 - **Startup**: Clipboard hydrate runs in Tauri `setup` (fast SQLite read). Index cache hydrate runs in the frontend after the first folder scan via `lookup_file_index_cache` (async, does not block the initial render). Background indexing queue starts ~200ms after first paint (does not block startup).
 
 ## Data model
@@ -163,6 +181,8 @@ Unified shape for files and clipboard snippets:
 - **Background indexing**: off by default; optional queue for TXT/DOCX (configurable scope); session limits; queue status in sidebar and Settings
 - **Indexing recovery** (Settings → Background indexing): **Clear all indexed content** (SQLite + in-memory reset) and **Reset indexing queue** (stop pending jobs, keep indexed files)
 - Settings statistics: indexed file count and total indexed characters
+- **Background mode (Phase 1)**: closing the window hides Remy instead of quitting (setting on by default); one-time system notification on first hide; file/clipboard/indexing polling continues in the hidden webview
+- **Menu bar tray (macOS)**: Remy icon in the menu bar when running; menu with Open Remy, Scan now, background indexing toggle, live stats (indexed files + clipboard entries), and Quit Remy
 - Mock timeline when running `npm run dev` without Tauri
 - **Settings** page: default folder scan toggles, poll intervals, clipboard privacy, background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status — custom folders are managed on **Timeline**
 
@@ -189,6 +209,14 @@ In **dev** (`npm run dev` or `npm run tauri:dev`):
 - **Reset onboarding** — clears `remy.onboardingCompleted` so the welcome modal can show again when the store is empty (no files, clipboard entries, or favorites).
 
 Production builds omit the Developer section.
+
+### Testing background mode and menu bar (Tauri only)
+
+1. **Background hide** — Close the window (red X). App stays in Dock; tray icon remains. First close shows notification: *“Remy is still running in the background.”*
+2. **Monitoring while hidden** — Copy text or add a file to a watched folder; wait for poll interval; tray → **Open Remy** or Dock click — new items appear.
+3. **Tray menu** — **Scan now** triggers immediate rescan; **Background indexing** toggles setting (verify in Settings); stats lines match SQLite counts; **Quit Remy** exits fully.
+4. **Setting off** — Settings → Background → disable *Run Remy in background when window is closed*; close window → app quits.
+5. **Explicit quit** — Cmd+Q quits even when background mode is on (tray **Quit Remy** also calls `app.exit(0)`).
 
 ## Explicit non-goals (for now)
 

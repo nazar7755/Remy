@@ -6,10 +6,13 @@
   "permissions": [
     "core:default",
     "core:window:default",
+    "core:tray:default",
+    "core:menu:default",
     "fs:default",
     "opener:default",
     "clipboard-manager:default",
     "dialog:default",
+    "notification:default",
     {
       "identifier": "opener:allow-open-path",
       "allow": [

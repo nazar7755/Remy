@@ -405,6 +405,25 @@ export function SettingsPage({
       </SettingsSection>
 
       <SettingsSection
+        title="Background"
+        description="Keep Remy running when the window is closed."
+      >
+        <SettingsRow
+          label="Run Remy in background when window is closed"
+          hint="Remy hides instead of quitting and keeps watching files, clipboard, and indexing"
+        >
+          <Toggle
+            label="Run Remy in background when window is closed"
+            checked={settings.runInBackgroundWhenClosed}
+            disabled={disabled || !isTauri()}
+            onChange={(runInBackgroundWhenClosed) =>
+              patch({ runInBackgroundWhenClosed })
+            }
+          />
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
         title="Background indexing"
         description="Off by default. TXT/DOCX: max 10MB, one every 5 seconds. PDF is separate and off by default."
       >

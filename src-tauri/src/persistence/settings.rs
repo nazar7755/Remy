@@ -23,6 +23,12 @@ pub struct AppSettingsDto {
     pub background_pdf_delay_sec: u32,
     #[serde(default = "default_custom_watched_folders")]
     pub custom_watched_folders: Vec<String>,
+    #[serde(default = "default_run_in_background_when_closed")]
+    pub run_in_background_when_closed: bool,
+}
+
+fn default_run_in_background_when_closed() -> bool {
+    true
 }
 
 fn default_custom_watched_folders() -> Vec<String> {
@@ -64,6 +70,7 @@ impl Default for AppSettingsDto {
             background_pdf_max_size_mb: default_background_pdf_max_size_mb(),
             background_pdf_delay_sec: default_background_pdf_delay_sec(),
             custom_watched_folders: default_custom_watched_folders(),
+            run_in_background_when_closed: default_run_in_background_when_closed(),
         }
     }
 }

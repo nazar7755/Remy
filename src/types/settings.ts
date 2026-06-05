@@ -20,6 +20,8 @@ export interface AppSettings {
   backgroundPdfDelaySec: number
   /** Absolute paths to user-added watch folders (persisted in SQLite). */
   customWatchedFolders: string[]
+  /** When on, closing the window hides Remy instead of quitting. */
+  runInBackgroundWhenClosed: boolean
 }
 
 export interface MemoryStatistics {
@@ -52,6 +54,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backgroundPdfMaxSizeMb: DEFAULT_BACKGROUND_PDF_MAX_SIZE_MB,
   backgroundPdfDelaySec: DEFAULT_BACKGROUND_PDF_DELAY_SEC,
   customWatchedFolders: [],
+  runInBackgroundWhenClosed: true,
 }
 
 export function isExtensionInBackgroundScope(
