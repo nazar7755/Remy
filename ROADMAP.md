@@ -31,6 +31,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [x] **Favorites** — independent pinned collection (SQLite + snapshots); dedicated page (all sources); star on cards/details
 - [x] **Indexed** — dedicated page for files with extracted index text (all sources); search, sort, index metadata on cards
 - [ ] **Search** — dedicated search experience (saved queries, result grouping, keyboard focus)
+- [x] **Quick Search overlay** — Spotlight-style overlay (`Cmd + Shift + Space`); files + clipboard + indexed content; keyboard navigation; Cmd+Enter opens in main app
 - [x] **Settings** — folder scan toggles (Downloads / Desktop / Documents), poll intervals, clipboard privacy, shortcuts (read-only), startup (launch at login + background when closed), clear history/index, statistics
 - [ ] Theme customization (if needed)
 
@@ -72,7 +73,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 
 ## Phase 3 — Power user & quality
 
-- [x] Global shortcut to open Remy (Raycast-style launcher) — `Cmd + Shift + Space` shows window and focuses header search; read-only display in Settings → Shortcuts
+- [x] Global shortcut to open Remy (Raycast-style launcher) — `Cmd + Shift + Space` opens compact Quick Search overlay (Spotlight-style); ↑↓ navigate, Enter open/copy, Esc close, Cmd+Enter open in full app; fallback to main window; read-only display in Settings → Shortcuts
 - [x] **Background mode** — hide window on close (default on); keep file/clipboard/indexing alive; one-time notification; Settings toggle
 - [x] **Launch at login (macOS)** — optional Launch Agent login item; autostart with hidden window (`--background-launch`); Settings toggle (default off)
 - [x] Menu bar / system tray presence (macOS menu bar icon with Open, Scan now, indexing toggle, stats, Quit)
@@ -113,4 +114,4 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 2. Update checkboxes when merging work (or strike through with PR link).
 3. If scope changes, edit **Principles** in `PROJECT_CONTEXT.md` first, then adjust phases here.
 
-**Current focus recommendation:** Phase 1.1 (Search dedicated view) — global hotkey, onboarding, empty states, Settings, persistence, and custom watch folders are in place.
+**Current focus recommendation:** Phase 1.1 (Search dedicated view) — Quick Search overlay, global hotkey, onboarding, empty states, Settings, persistence, and custom watch folders are in place.

@@ -5,6 +5,7 @@ mod commands;
 mod content_indexer;
 mod global_hotkey;
 mod persistence;
+mod quick_search;
 mod tray;
 
 use tauri::Manager;
@@ -70,6 +71,9 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 background_mode::attach_window_handler(&window);
             }
+            if let Some(window) = app.get_webview_window(quick_search::QUICK_SEARCH_LABEL) {
+                quick_search::attach_window_handler(&window);
+            }
             if let Err(err) = tray::setup_tray(&app.handle()) {
                 eprintln!("failed to create tray icon: {err}");
             }
@@ -100,6 +104,8 @@ pub fn run() {
             commands::settings::clear_clipboard_history,
             commands::settings::clear_indexed_content,
             global_hotkey::get_global_hotkey_status,
+            quick_search::hide_quick_search_overlay,
+            quick_search::open_memory_in_main_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Remy")

@@ -19,6 +19,20 @@
         "minWidth": 900,
         "minHeight": 600,
         "resizable": true
+      },
+      {
+        "label": "quick-search",
+        "title": "Remy Search",
+        "width": 760,
+        "height": 440,
+        "visible": false,
+        "center": true,
+        "alwaysOnTop": true,
+        "decorations": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "shadow": true,
+        "focus": true
       }
     ],
     "security": {

@@ -416,8 +416,8 @@ export function SettingsPage({
         description="Global keyboard shortcuts while Remy is running."
       >
         <SettingsRow
-          label="Open Remy Search"
-          hint="Show Remy and focus search from anywhere on macOS"
+          label="Quick Search"
+          hint="Open the compact search overlay from anywhere on macOS"
         >
           <kbd className="inline-flex items-center gap-1 rounded border border-remy-border bg-remy-elevated px-2 py-1 font-mono text-xs text-remy-text">
             <span>⌘</span>

@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 pub const OPEN_SEARCH_SHORTCUT: &str = "Command+Shift+Space";
@@ -31,8 +31,7 @@ impl GlobalHotkeyState {
 }
 
 fn on_hotkey_pressed<R: Runtime>(app: &AppHandle<R>) {
-    crate::background_mode::show_main_window(app);
-    let _ = app.emit("focus-global-search", ());
+    crate::quick_search::show_quick_search(app);
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

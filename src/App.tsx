@@ -97,6 +97,19 @@ function App() {
       unlisteners.push(fn)
     })
 
+    void listen<{ id: string; fileName: string }>('open-memory-in-main', (event) => {
+      setActiveSection('Timeline')
+      setGlobalQuery(event.payload.fileName)
+      requestAnimationFrame(() => {
+        const input = globalSearchRef.current
+        if (!input) return
+        input.focus()
+        input.select()
+      })
+    }).then((fn) => {
+      unlisteners.push(fn)
+    })
+
     return () => {
       for (const unlisten of unlisteners) {
         unlisten()

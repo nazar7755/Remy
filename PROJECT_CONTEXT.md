@@ -29,7 +29,7 @@ Tagline (in-app): *Your second memory — files and clipboard.*
 ```
 Remy/
 ├── src/                    # React frontend
-│   ├── components/         # UI (Sidebar, timeline, Settings, cards, search)
+│   ├── components/         # UI (Sidebar, timeline, Settings, cards, QuickSearchOverlay)
 │   ├── hooks/              # useFileScanner, useSettings, useWatchedFolders, useBackgroundIndexing
 │   ├── services/           # Tauri/mock adapters, clipboard, indexing, indexingQueue
 │   ├── lib/                # Search, formatting, Tauri detection, `imageSrc` (asset URLs)
@@ -42,7 +42,8 @@ Remy/
 │   │   ├── content_indexer.rs
 │   │   ├── background_mode.rs   # hide-on-close, prevent exit, dock reopen
 │   │   ├── launch_at_login.rs   # macOS Launch Agent autostart, --background-launch
-│   │   ├── global_hotkey.rs     # Cmd+Shift+Space → show window + focus search
+│   │   ├── global_hotkey.rs     # Cmd+Shift+Space → quick search overlay
+│   │   ├── quick_search.rs      # Spotlight-style overlay window show/hide/focus
 │   │   └── tray.rs              # macOS menu bar / system tray icon + menu
 │   └── tauri.conf.json     # `assetProtocol` scope for image thumbnails (Downloads/Desktop/Documents)
 ├── package.json
@@ -113,6 +114,8 @@ flowchart LR
 | `get_favorites` / `set_favorite` | Persist pinned memories (`memory_id` + metadata snapshot JSON) |
 | `clear_clipboard_history` / `clear_indexed_content` | Privacy / recovery — clear clipboard history or all cached index text |
 | `get_global_hotkey_status` | Whether `Cmd + Shift + Space` registered successfully (for Settings warning) |
+| `hide_quick_search_overlay` | Hide the `quick-search` overlay window |
+| `open_memory_in_main_app` | Hide overlay, show main window, emit `open-memory-in-main` with item id + file name |
 
 **Background mode, menu bar & global hotkey:**
 
@@ -121,7 +124,8 @@ flowchart LR
 | `background_mode.rs` | On window close (when `run_in_background_when_closed`): `prevent_close`, hide window, one-time system notification; `ExitRequested` without quit code → `prevent_exit`; macOS Dock click → show main window |
 | `launch_at_login.rs` | macOS Launch Agent via `tauri-plugin-autostart`; registers login item with `--background-launch` arg; hides main window on autostart launch; syncs login item when `launch_at_login` setting changes |
 | `tray.rs` | Menu bar icon (bundled app icon, template on macOS); menu: Open Remy, Scan now, background indexing toggle, stats, Quit; emits `tray-scan-now` and `settings-changed` to the webview |
-| `global_hotkey.rs` | Registers `Command+Shift+Space` via `tauri-plugin-global-shortcut`; on press calls `show_main_window` and emits `focus-global-search`; registration errors stored for Settings (no crash) |
+| `global_hotkey.rs` | Registers `Command+Shift+Space` via `tauri-plugin-global-shortcut`; on press opens the **quick-search** overlay (fallback: main window + header search focus) |
+| `quick_search.rs` | Manages the `quick-search` Tauri window: show/center/focus, hide, close→hide handler, `open_memory_in_main_app` command |
 
 **Tauri events (Rust → frontend):**
 
@@ -129,7 +133,9 @@ flowchart LR
 |-------|------------------|--------|
 | `tray-scan-now` | `App.tsx` | Calls `memoryScan.refresh()` (same as Timeline “Scan now”) |
 | `settings-changed` | `useSettings` | Reloads settings from SQLite after tray toggles background indexing |
-| `focus-global-search` | `App.tsx` | Focuses and selects the header global search input (after global hotkey or future callers) |
+| `focus-global-search` | `App.tsx` | Focuses header search (fallback when overlay unavailable) |
+| `focus-quick-search` | `QuickSearchOverlay.tsx` | Clears query and focuses overlay search input (after global hotkey) |
+| `open-memory-in-main` | `App.tsx` | Shows main window with Timeline search prefilled (Cmd+Enter in overlay) |
 
 Background capture (file poll, clipboard poll, indexing queue) stays in the React webview. Hiding the window does **not** destroy the webview, so existing `setInterval` loops keep running unchanged.
 
@@ -190,7 +196,7 @@ Unified shape for files and clipboard snippets:
 - **Background mode (Phase 1)**: closing the window hides Remy instead of quitting (setting on by default); one-time system notification on first hide; file/clipboard/indexing polling continues in the hidden webview
 - **Launch at login (macOS)**: optional setting (off by default); registers a Launch Agent login item via `tauri-plugin-autostart`; autostart passes `--background-launch` so the main window stays hidden (menu bar tray only)
 - **Menu bar tray (macOS)**: Remy icon in the menu bar when running; menu with Open Remy, Scan now, background indexing toggle, live stats (indexed files + clipboard entries), and Quit Remy
-- **Global hotkey (macOS/desktop)**: `Cmd + Shift + Space` shows and focuses Remy from anywhere while the app is running (hidden, menu-bar-only, or in background); focuses the header search bar. Settings → Shortcuts displays the binding; warns if registration failed (e.g. shortcut taken by another app)
+- **Global hotkey (macOS/desktop)**: `Cmd + Shift + Space` opens a compact **Quick Search** overlay (760×440, always on top, frameless, dark theme) instead of the full Remy window; searches files, clipboard, and indexed content via `contentSearch.ts`; ↑↓ navigate, Enter open/copy, Esc close, Cmd+Enter open in full Remy. Falls back to main window + header search if the overlay is unavailable. Settings → Shortcuts displays the binding; warns if registration failed
 - Mock timeline when running `npm run dev` without Tauri
 - **Settings** page: default folder scan toggles, poll intervals, clipboard privacy, shortcuts (read-only display), startup (launch at login + run in background when closed), background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status — custom folders are managed on **Timeline**
 
@@ -234,13 +240,16 @@ Production builds omit the Developer section.
 4. **Disable** — Settings → Startup → turn off *Launch Remy at login*. Remy is removed from Login Items; next login does not start Remy automatically.
 5. **Manual simulate** — Quit Remy, then from Terminal run the built app with `--background-launch` (same flag the login item uses); window should stay hidden.
 
-### Testing global hotkey (macOS Tauri only)
+### Testing global hotkey & Quick Search overlay (macOS Tauri only)
 
-1. **While hidden** — Close the main window (background mode on). Press **Cmd + Shift + Space**. Remy window should appear, come to front, and the header search input should be focused with its text selected.
-2. **Menu bar only** — Quit and relaunch with `--background-launch` (or log in with launch-at-login). Press **Cmd + Shift + Space** — same behavior without clicking the tray first.
-3. **While visible** — With Remy already open, press **Cmd + Shift + Space** — window stays visible; search input receives focus.
-4. **Settings** — Settings → Shortcuts shows *Open Remy Search: Cmd + Shift + Space*. If another app owns the shortcut, an amber warning appears (app keeps running).
-5. **Conflict check** — If registration fails, verify no crash; tray, polling, and indexing still work.
+1. **While hidden** — Close the main window (background mode on). Press **Cmd + Shift + Space**. The compact Quick Search overlay should appear centered on screen with the search input focused (main window stays hidden).
+2. **Menu bar only** — Quit and relaunch with `--background-launch` (or log in with launch-at-login). Press **Cmd + Shift + Space** — overlay opens without showing the main window first.
+3. **While overlay open** — Press **Cmd + Shift + Space** again — overlay stays open; search input receives focus and text is selected.
+4. **Search & navigate** — Type a query; use ↑↓ to move, **Enter** to open a file or copy clipboard text, **Esc** to dismiss overlay.
+5. **Open in Remy** — Select a result and press **Cmd + Enter** — overlay closes, main window opens on Timeline with search prefilled.
+6. **Settings** — Settings → Shortcuts shows *Quick Search: Cmd + Shift + Space*. If another app owns the shortcut, an amber warning appears (app keeps running).
+7. **Fallback** — If the overlay window fails to show, the main Remy window opens with header search focused instead.
+8. **Conflict check** — If registration fails, verify no crash; tray, polling, and indexing still work.
 
 ## Explicit non-goals (for now)
 
