@@ -405,9 +405,20 @@ export function SettingsPage({
       </SettingsSection>
 
       <SettingsSection
-        title="Background"
-        description="Keep Remy running when the window is closed."
+        title="Startup"
+        description="Control how Remy starts and runs on your Mac."
       >
+        <SettingsRow
+          label="Launch Remy at login"
+          hint="Starts Remy when you log in, hidden in the background (macOS only)"
+        >
+          <Toggle
+            label="Launch Remy at login"
+            checked={settings.launchAtLogin}
+            disabled={disabled || !isTauri()}
+            onChange={(launchAtLogin) => patch({ launchAtLogin })}
+          />
+        </SettingsRow>
         <SettingsRow
           label="Run Remy in background when window is closed"
           hint="Remy hides instead of quitting and keeps watching files, clipboard, and indexing"

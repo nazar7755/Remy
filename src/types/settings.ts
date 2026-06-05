@@ -22,6 +22,8 @@ export interface AppSettings {
   customWatchedFolders: string[]
   /** When on, closing the window hides Remy instead of quitting. */
   runInBackgroundWhenClosed: boolean
+  /** macOS only — start Remy at login, hidden in the background. */
+  launchAtLogin: boolean
 }
 
 export interface MemoryStatistics {
@@ -55,6 +57,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backgroundPdfDelaySec: DEFAULT_BACKGROUND_PDF_DELAY_SEC,
   customWatchedFolders: [],
   runInBackgroundWhenClosed: true,
+  launchAtLogin: false,
 }
 
 export function isExtensionInBackgroundScope(

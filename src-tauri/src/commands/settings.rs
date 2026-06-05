@@ -1,6 +1,7 @@
 use crate::clipboard_monitor::ClipboardMonitor;
+use crate::launch_at_login;
 use crate::persistence::{AppSettingsDto, MemoryStatisticsDto, RemyStore};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn get_app_settings(store: State<'_, RemyStore>) -> Result<AppSettingsDto, String> {
@@ -10,9 +11,12 @@ pub fn get_app_settings(store: State<'_, RemyStore>) -> Result<AppSettingsDto, S
 #[tauri::command]
 pub fn save_app_settings(
     settings: AppSettingsDto,
+    app: AppHandle,
     store: State<'_, RemyStore>,
 ) -> Result<AppSettingsDto, String> {
-    store.save_settings(&settings)
+    let saved = store.save_settings(&settings)?;
+    launch_at_login::sync_launch_at_login(&app, saved.launch_at_login)?;
+    Ok(saved)
 }
 
 #[tauri::command]

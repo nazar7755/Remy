@@ -25,6 +25,12 @@ pub struct AppSettingsDto {
     pub custom_watched_folders: Vec<String>,
     #[serde(default = "default_run_in_background_when_closed")]
     pub run_in_background_when_closed: bool,
+    #[serde(default = "default_launch_at_login")]
+    pub launch_at_login: bool,
+}
+
+fn default_launch_at_login() -> bool {
+    false
 }
 
 fn default_run_in_background_when_closed() -> bool {
@@ -71,6 +77,7 @@ impl Default for AppSettingsDto {
             background_pdf_delay_sec: default_background_pdf_delay_sec(),
             custom_watched_folders: default_custom_watched_folders(),
             run_in_background_when_closed: default_run_in_background_when_closed(),
+            launch_at_login: default_launch_at_login(),
         }
     }
 }

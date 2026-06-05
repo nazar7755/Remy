@@ -1,4 +1,5 @@
 mod background_mode;
+mod launch_at_login;
 mod clipboard_monitor;
 mod commands;
 mod content_indexer;
@@ -43,6 +44,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(launch_at_login::autostart_plugin())
         .setup(|app| {
             if let Ok(entries) = app.state::<persistence::RemyStore>().load_clipboard_entries() {
                 let _ = app
@@ -50,6 +52,10 @@ pub fn run() {
                     .restore(entries);
             }
             let _ = register_watched_scopes_from_settings(&app.handle());
+            launch_at_login::hide_main_window_if_background_launch(&app.handle());
+            if let Ok(settings) = app.state::<persistence::RemyStore>().get_settings() {
+                let _ = launch_at_login::sync_launch_at_login(&app.handle(), settings.launch_at_login);
+            }
             if let Some(window) = app.get_webview_window("main") {
                 background_mode::attach_window_handler(&window);
             }
