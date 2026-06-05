@@ -2,10 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { HighlightedSnippet } from './HighlightedSnippet'
 import { SourceBadge } from './SourceBadge'
+import { useFavorites } from '../hooks/useFavorites'
 import { useFileScanner } from '../hooks/useFileScanner'
 import { useSettings } from '../hooks/useSettings'
-import { searchMemoryItems } from '../lib/contentSearch'
+import { searchMemoryItems, type MemorySearchResult } from '../lib/contentSearch'
 import { memoryItemTypeStyles } from '../lib/memoryItemStyles'
+import {
+  buildRecentActivity,
+  buildRecentActivityRows,
+  clipboardPreviewText,
+  recentActivityIsEmpty,
+  RECENT_ACTIVITY_SECTION_LABELS,
+  type RecentActivity,
+  type RecentActivityRow,
+} from '../lib/quickSearchRecentActivity'
 import { isTauri, tauriInvoke } from '../lib/tauri'
 import { copyText, openFile } from '../services/fileActions'
 import type { MemoryItem } from '../types/memoryItem'
@@ -17,26 +27,218 @@ function typeBadgeClass(type: MemoryItem['type']): string {
   return memoryItemTypeStyles[type].badge
 }
 
+function SearchResultRowContent({
+  result,
+  trimmedQuery,
+}: {
+  result: MemorySearchResult
+  trimmedQuery: string
+}) {
+  const { item, snippet } = result
+  const fallbackSnippet =
+    snippet ??
+    (isClipboardItem(item) && item.content
+      ? item.content.slice(0, 120).replace(/\s+/g, ' ').trim()
+      : item.filePath)
+
+  return (
+    <>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-remy-text">
+          {item.fileName}
+        </span>
+        <SourceBadge source={item.source} />
+        <span
+          className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${typeBadgeClass(item.type)}`}
+        >
+          {item.type}
+        </span>
+      </div>
+      {fallbackSnippet &&
+        (trimmedQuery && snippet ? (
+          <HighlightedSnippet
+            snippet={fallbackSnippet}
+            query={trimmedQuery}
+            className="truncate text-xs leading-snug"
+          />
+        ) : (
+          <p className="truncate text-xs leading-snug text-remy-muted">
+            {fallbackSnippet}
+          </p>
+        ))}
+    </>
+  )
+}
+
+function ResultRowButton({
+  result,
+  selected,
+  index,
+  onSelect,
+  onActivate,
+  registerRef,
+  children,
+}: {
+  result: MemorySearchResult
+  selected: boolean
+  index: number
+  onSelect: (index: number) => void
+  onActivate: (result: MemorySearchResult, openInMain: boolean) => void
+  registerRef: (index: number, el: HTMLButtonElement | null) => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      ref={(el) => {
+        registerRef(index, el)
+      }}
+      type="button"
+      role="option"
+      aria-selected={selected}
+      onMouseEnter={() => onSelect(index)}
+      onClick={() => void onActivate(result, false)}
+      className={`flex w-full flex-col gap-1 rounded-lg px-3 py-2.5 text-left transition-colors ${
+        selected
+          ? 'bg-remy-accent/15 ring-1 ring-remy-accent/30'
+          : 'hover:bg-remy-elevated/80'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function RecentFileRowContent({ item }: { item: MemoryItem }) {
+  return (
+    <>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-remy-text">
+          {item.fileName}
+        </span>
+        <SourceBadge source={item.source} />
+        <span
+          className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${typeBadgeClass(item.type)}`}
+        >
+          {item.type}
+        </span>
+        <time
+          dateTime={item.createdAtIso}
+          className="shrink-0 text-[11px] tabular-nums text-remy-muted"
+        >
+          {item.createdAt}
+        </time>
+      </div>
+    </>
+  )
+}
+
+function RecentClipboardRowContent({ item }: { item: MemoryItem }) {
+  return (
+    <>
+      <p className="truncate text-sm text-remy-text">
+        {clipboardPreviewText(item)}
+      </p>
+      <time
+        dateTime={item.createdAtIso}
+        className="text-[11px] tabular-nums text-remy-muted"
+      >
+        {item.createdAt}
+      </time>
+    </>
+  )
+}
+
+function FavoriteRowContent({ item }: { item: MemoryItem }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-remy-text">
+        {item.fileName}
+      </span>
+      <span
+        className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${typeBadgeClass(item.type)}`}
+      >
+        {item.type}
+      </span>
+    </div>
+  )
+}
+
+function RecentActivityRowContent({
+  row,
+}: {
+  row: RecentActivityRow
+}) {
+  const { item } = row.result
+
+  if (row.section === 'recent-files') {
+    return <RecentFileRowContent item={item} />
+  }
+  if (row.section === 'recent-clipboard') {
+    return <RecentClipboardRowContent item={item} />
+  }
+  return <FavoriteRowContent item={item} />
+}
+
 export function QuickSearchOverlay() {
   const settingsState = useSettings()
-  const memoryScan = useFileScanner(true, settingsState.settings, new Set())
+  const favoritesState = useFavorites()
+  const memoryScan = useFileScanner(
+    true,
+    settingsState.settings,
+    favoritesState.favoriteIds,
+  )
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [recentActivity, setRecentActivity] = useState<RecentActivity | null>(
+    null,
+  )
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const hasSnapshottedRef = useRef(false)
+
+  const registerItemRef = useCallback(
+    (index: number, el: HTMLButtonElement | null) => {
+      itemRefs.current[index] = el
+    },
+    [],
+  )
 
   const items = useMemo(() => memoryScan.items ?? [], [memoryScan.items])
 
-  const results = useMemo(() => {
+  const snapshotRecentActivity = useCallback(() => {
+    const clipboardItems = items.filter(isClipboardItem)
+    setRecentActivity(
+      buildRecentActivity(
+        memoryScan.fileItems,
+        clipboardItems,
+        favoritesState.records,
+        items,
+      ),
+    )
+  }, [memoryScan.fileItems, items, favoritesState.records])
+
+  const trimmedQuery = query.trim()
+  const isSearchMode = trimmedQuery.length > 0
+
+  const searchResults = useMemo(() => {
     const searched = searchMemoryItems(items, query, 'All')
     return searched.slice(0, MAX_RESULTS)
   }, [items, query])
 
+  const recentRows = useMemo(() => {
+    if (!recentActivity) return []
+    return buildRecentActivityRows(recentActivity)
+  }, [recentActivity])
+
+  const navigableResults = isSearchMode
+    ? searchResults
+    : recentRows.map((row) => row.result)
+
   const activeIndex =
-    results.length === 0
+    navigableResults.length === 0
       ? 0
-      : Math.min(selectedIndex, results.length - 1)
+      : Math.min(selectedIndex, navigableResults.length - 1)
 
   const focusInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -57,6 +259,20 @@ export function QuickSearchOverlay() {
   }, [focusInput])
 
   useEffect(() => {
+    if (memoryScan.loading && items.length === 0) return
+    if (favoritesState.loading) return
+    if (!hasSnapshottedRef.current) {
+      snapshotRecentActivity()
+      hasSnapshottedRef.current = true
+    }
+  }, [
+    memoryScan.loading,
+    items.length,
+    favoritesState.loading,
+    snapshotRecentActivity,
+  ])
+
+  useEffect(() => {
     if (!isTauri()) return
 
     const unlisteners: Array<() => void> = []
@@ -64,6 +280,7 @@ export function QuickSearchOverlay() {
     void listen('focus-quick-search', () => {
       setQuery('')
       setSelectedIndex(0)
+      snapshotRecentActivity()
       focusInput()
     }).then((fn) => {
       unlisteners.push(fn)
@@ -74,15 +291,15 @@ export function QuickSearchOverlay() {
         unlisten()
       }
     }
-  }, [focusInput])
+  }, [focusInput, snapshotRecentActivity])
 
   useEffect(() => {
     const el = itemRefs.current[activeIndex]
     el?.scrollIntoView({ block: 'nearest' })
-  }, [activeIndex, results.length])
+  }, [activeIndex, navigableResults.length])
 
   const activateResult = useCallback(
-    async (result: (typeof results)[number], openInMain: boolean) => {
+    async (result: MemorySearchResult, openInMain: boolean) => {
       const { item } = result
 
       if (openInMain) {
@@ -116,28 +333,34 @@ export function QuickSearchOverlay() {
 
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      if (results.length === 0) return
-      setSelectedIndex((i) => Math.min(i + 1, results.length - 1))
+      if (navigableResults.length === 0) return
+      setSelectedIndex((i) => Math.min(i + 1, navigableResults.length - 1))
       return
     }
 
     if (event.key === 'ArrowUp') {
       event.preventDefault()
-      if (results.length === 0) return
+      if (navigableResults.length === 0) return
       setSelectedIndex((i) => Math.max(i - 1, 0))
       return
     }
 
     if (event.key === 'Enter') {
       event.preventDefault()
-      const selected = results[activeIndex]
+      const selected = navigableResults[activeIndex]
       if (!selected) return
       const openInMain = event.metaKey || event.ctrlKey
       void activateResult(selected, openInMain)
     }
   }
 
-  const trimmedQuery = query.trim()
+  const showLoading =
+    memoryScan.loading && items.length === 0 && !recentActivity
+  const showRecentEmpty =
+    !isSearchMode &&
+    recentActivity !== null &&
+    recentActivityIsEmpty(recentActivity)
+  const showSearchEmpty = isSearchMode && searchResults.length === 0
 
   return (
     <div className="flex h-svh flex-col overflow-hidden rounded-xl border border-remy-border bg-remy-bg shadow-2xl shadow-black/50">
@@ -175,74 +398,71 @@ export function QuickSearchOverlay() {
       </div>
 
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-        {memoryScan.loading && items.length === 0 && (
+        {showLoading && (
           <p className="px-3 py-8 text-center text-sm text-remy-muted">
             Loading memories…
           </p>
         )}
 
-        {!memoryScan.loading && results.length === 0 && (
+        {showRecentEmpty && (
           <p className="px-3 py-8 text-center text-sm text-remy-muted">
-            {trimmedQuery ? 'No results found' : 'No memories yet'}
+            No recent activity yet
           </p>
         )}
 
-        {results.length > 0 && (
-          <ul className="space-y-0.5" role="listbox" aria-label="Search results">
-            {results.map((result, index) => {
-              const { item, snippet } = result
-              const selected = index === activeIndex
-              const fallbackSnippet =
-                snippet ??
-                (isClipboardItem(item) && item.content
-                  ? item.content.slice(0, 120).replace(/\s+/g, ' ').trim()
-                  : item.filePath)
+        {showSearchEmpty && (
+          <p className="px-3 py-8 text-center text-sm text-remy-muted">
+            No results found
+          </p>
+        )}
 
-              return (
-                <li key={item.id}>
-                  <button
-                    ref={(el) => {
-                      itemRefs.current[index] = el
-                    }}
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => void activateResult(result, false)}
-                    className={`flex w-full flex-col gap-1 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                      selected
-                        ? 'bg-remy-accent/15 ring-1 ring-remy-accent/30'
-                        : 'hover:bg-remy-elevated/80'
-                    }`}
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-remy-text">
-                        {item.fileName}
-                      </span>
-                      <SourceBadge source={item.source} />
-                      <span
-                        className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${typeBadgeClass(item.type)}`}
-                      >
-                        {item.type}
-                      </span>
-                    </div>
-                    {fallbackSnippet && (
-                      trimmedQuery && snippet ? (
-                        <HighlightedSnippet
-                          snippet={fallbackSnippet}
-                          query={trimmedQuery}
-                          className="truncate text-xs leading-snug"
-                        />
-                      ) : (
-                        <p className="truncate text-xs leading-snug text-remy-muted">
-                          {fallbackSnippet}
-                        </p>
-                      )
-                    )}
-                  </button>
-                </li>
-              )
-            })}
+        {isSearchMode && searchResults.length > 0 && (
+          <ul className="space-y-0.5" role="listbox" aria-label="Search results">
+            {searchResults.map((result, index) => (
+              <li key={result.item.id}>
+                <ResultRowButton
+                  result={result}
+                  selected={index === activeIndex}
+                  index={index}
+                  onSelect={setSelectedIndex}
+                  onActivate={activateResult}
+                  registerRef={registerItemRef}
+                >
+                  <SearchResultRowContent
+                    result={result}
+                    trimmedQuery={trimmedQuery}
+                  />
+                </ResultRowButton>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!isSearchMode && recentRows.length > 0 && (
+          <ul
+            className="space-y-0.5"
+            role="listbox"
+            aria-label="Recent activity"
+          >
+            {recentRows.map((row, index) => (
+              <li key={`${row.section}-${row.result.item.id}`}>
+                {row.showSectionHeader && (
+                  <h3 className="px-3 pt-3 pb-1 text-[11px] font-semibold tracking-wide text-remy-muted uppercase first:pt-1">
+                    {RECENT_ACTIVITY_SECTION_LABELS[row.section]}
+                  </h3>
+                )}
+                <ResultRowButton
+                  result={row.result}
+                  selected={index === activeIndex}
+                  index={index}
+                  onSelect={setSelectedIndex}
+                  onActivate={activateResult}
+                  registerRef={registerItemRef}
+                >
+                  <RecentActivityRowContent row={row} />
+                </ResultRowButton>
+              </li>
+            ))}
           </ul>
         )}
       </div>

@@ -89,6 +89,7 @@ flowchart LR
 - **`useBackgroundIndexing`**: After initial UI render (~2s), enqueues indexable files with `indexStatus === 'idle'` and processes them **one at a time** via `indexFile`. TXT/DOCX: 5s between jobs, max 10MB. **PDF is off by default** — separate Settings toggle with max size (default 5MB), delay (default 10s), 60s Rust extraction timeout, and panic isolation. Failed PDFs get `indexStatus === 'error'` and are not retried in the same session. Queue status shown in the sidebar and Settings.
 - **`FileScanner` + adapters**: `TauriFileSystemAdapter` (production) or `MockFileSystemAdapter` (Vite-only browser dev).
 - **`contentSearch`**: Client-side filter by name, path, extension, type, source, and indexed/plain text.
+- **`quickSearchRecentActivity`**: Builds empty-query Recent Activity sections for Quick Search (Recent Files, Recent Clipboard, Favorites); snapshotted at overlay open, not recomputed on keystroke.
 - **Navigation**: `Timeline`, `Favorites`, `Indexed`, and `Settings` are implemented; `Search` is not built yet.
 - **Onboarding & empty states**: True first launch (no files, no clipboard entries in SQLite, no favorites, scan/favorites loaded) opens a one-time **modal** (`OnboardingModal`). Dismissal or action (Scan now / Add Folder) sets `localStorage` flag `remy.onboardingCompleted` — never shown again. Timeline stays search + toolbar + content only (no inline welcome card). Section empty states share an `EmptyState` component. Dev: **Preview empty states** (`remy.previewEmptyStates`) and **Reset onboarding** in Settings → Developer.
 - **Indexed page**: Filtered view of live items with `indexStatus === 'indexed'` and extracted text (txt/pdf/docx from all scan sources); no source filters.
@@ -134,7 +135,7 @@ flowchart LR
 | `tray-scan-now` | `App.tsx` | Calls `memoryScan.refresh()` (same as Timeline “Scan now”) |
 | `settings-changed` | `useSettings` | Reloads settings from SQLite after tray toggles background indexing |
 | `focus-global-search` | `App.tsx` | Focuses header search (fallback when overlay unavailable) |
-| `focus-quick-search` | `QuickSearchOverlay.tsx` | Clears query and focuses overlay search input (after global hotkey) |
+| `focus-quick-search` | `QuickSearchOverlay.tsx` | Clears query, refreshes Recent Activity snapshot, and focuses overlay search input (after global hotkey) |
 | `open-memory-in-main` | `App.tsx` | Shows main window with Timeline search prefilled (Cmd+Enter in overlay) |
 
 Background capture (file poll, clipboard poll, indexing queue) stays in the React webview. Hiding the window does **not** destroy the webview, so existing `setInterval` loops keep running unchanged.
@@ -196,7 +197,8 @@ Unified shape for files and clipboard snippets:
 - **Background mode (Phase 1)**: closing the window hides Remy instead of quitting (setting on by default); one-time system notification on first hide; file/clipboard/indexing polling continues in the hidden webview
 - **Launch at login (macOS)**: optional setting (off by default); registers a Launch Agent login item via `tauri-plugin-autostart`; autostart passes `--background-launch` so the main window stays hidden (menu bar tray only)
 - **Menu bar tray (macOS)**: Remy icon in the menu bar when running; menu with Open Remy, Scan now, background indexing toggle, live stats (indexed files + clipboard entries), and Quit Remy
-- **Global hotkey (macOS/desktop)**: `Cmd + Shift + Space` opens a compact **Quick Search** overlay (760×440, always on top, frameless, dark theme) instead of the full Remy window; searches files, clipboard, and indexed content via `contentSearch.ts`; ↑↓ navigate, Enter open/copy, Esc close, Cmd+Enter open in full Remy. Falls back to main window + header search if the overlay is unavailable. Settings → Shortcuts displays the binding; warns if registration failed
+- **Global hotkey (macOS/desktop)**: `Cmd + Shift + Space` opens a compact **Quick Search** overlay (760×440, always on top, frameless, dark theme) instead of the full Remy window; searches files, clipboard, and indexed content via `contentSearch.ts`; when the search box is empty, shows **Recent Activity** (Recent Files, Recent Clipboard, Favorites) snapshotted once at open; ↑↓ navigate, Enter open/copy, Esc close, Cmd+Enter open in full Remy. Falls back to main window + header search if the overlay is unavailable. Settings → Shortcuts displays the binding; warns if registration failed
+- **Quick Search Recent Activity** (empty query): three lightweight sections built by `quickSearchRecentActivity.ts` — **Recent Files** (up to 10, newest by file mtime/`createdAtIso`), **Recent Clipboard** (up to 5, newest capture time), **Favorites** (up to 5, SQLite order via `resolveFavoriteItems`). Snapshot taken after first scan + favorites load; refreshed on `focus-quick-search`; not recomputed on keystroke. Typing hides Recent Activity and shows normal search results; clearing the query restores the snapshot. Same keyboard actions as search results (Enter, Cmd+Enter, Esc)
 - Mock timeline when running `npm run dev` without Tauri
 - **Settings** page: default folder scan toggles, poll intervals, clipboard privacy, shortcuts (read-only display), startup (launch at login + run in background when closed), background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status — custom folders are managed on **Timeline**
 
@@ -244,12 +246,13 @@ Production builds omit the Developer section.
 
 1. **While hidden** — Close the main window (background mode on). Press **Cmd + Shift + Space**. The compact Quick Search overlay should appear centered on screen with the search input focused (main window stays hidden).
 2. **Menu bar only** — Quit and relaunch with `--background-launch` (or log in with launch-at-login). Press **Cmd + Shift + Space** — overlay opens without showing the main window first.
-3. **While overlay open** — Press **Cmd + Shift + Space** again — overlay stays open; search input receives focus and text is selected.
-4. **Search & navigate** — Type a query; use ↑↓ to move, **Enter** to open a file or copy clipboard text, **Esc** to dismiss overlay.
-5. **Open in Remy** — Select a result and press **Cmd + Enter** — overlay closes, main window opens on Timeline with search prefilled.
-6. **Settings** — Settings → Shortcuts shows *Quick Search: Cmd + Shift + Space*. If another app owns the shortcut, an amber warning appears (app keeps running).
-7. **Fallback** — If the overlay window fails to show, the main Remy window opens with header search focused instead.
-8. **Conflict check** — If registration fails, verify no crash; tray, polling, and indexing still work.
+3. **While overlay open** — Press **Cmd + Shift + Space** again — overlay stays open; search input receives focus and text is selected; Recent Activity refreshes.
+4. **Recent Activity (empty query)** — With files, clipboard entries, and/or favorites present, the overlay shows section headers **Recent Files**, **Recent Clipboard**, and **Favorites** (sections with no items are omitted). Use ↑↓ and **Enter** to open/copy like search results. Clearing the query restores Recent Activity.
+5. **Search & navigate** — Type a query; Recent Activity hides and search results appear; use ↑↓ to move, **Enter** to open a file or copy clipboard text, **Esc** to dismiss overlay.
+6. **Open in Remy** — Select a result and press **Cmd + Enter** — overlay closes, main window opens on Timeline with search prefilled.
+7. **Settings** — Settings → Shortcuts shows *Quick Search: Cmd + Shift + Space*. If another app owns the shortcut, an amber warning appears (app keeps running).
+8. **Fallback** — If the overlay window fails to show, the main Remy window opens with header search focused instead.
+9. **Conflict check** — If registration fails, verify no crash; tray, polling, and indexing still work.
 
 ## Explicit non-goals (for now)
 

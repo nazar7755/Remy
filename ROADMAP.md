@@ -31,7 +31,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [x] **Favorites** — independent pinned collection (SQLite + snapshots); dedicated page (all sources); star on cards/details
 - [x] **Indexed** — dedicated page for files with extracted index text (all sources); search, sort, index metadata on cards
 - [ ] **Search** — dedicated search experience (saved queries, result grouping, keyboard focus)
-- [x] **Quick Search overlay** — Spotlight-style overlay (`Cmd + Shift + Space`); files + clipboard + indexed content; keyboard navigation; Cmd+Enter opens in main app
+- [x] **Quick Search overlay** — Spotlight-style overlay (`Cmd + Shift + Space`); files + clipboard + indexed content; empty-query **Recent Activity** (Recent Files, Recent Clipboard, Favorites); keyboard navigation; Cmd+Enter opens in main app
 - [x] **Settings** — folder scan toggles (Downloads / Desktop / Documents), poll intervals, clipboard privacy, shortcuts (read-only), startup (launch at login + background when closed), clear history/index, statistics
 - [ ] Theme customization (if needed)
 
@@ -73,7 +73,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 
 ## Phase 3 — Power user & quality
 
-- [x] Global shortcut to open Remy (Raycast-style launcher) — `Cmd + Shift + Space` opens compact Quick Search overlay (Spotlight-style); ↑↓ navigate, Enter open/copy, Esc close, Cmd+Enter open in full app; fallback to main window; read-only display in Settings → Shortcuts
+- [x] Global shortcut to open Remy (Raycast-style launcher) — `Cmd + Shift + Space` opens compact Quick Search overlay (Spotlight-style); empty-query Recent Activity (Recent Files, Recent Clipboard, Favorites); ↑↓ navigate, Enter open/copy, Esc close, Cmd+Enter open in full app; fallback to main window; read-only display in Settings → Shortcuts
 - [x] **Background mode** — hide window on close (default on); keep file/clipboard/indexing alive; one-time notification; Settings toggle
 - [x] **Launch at login (macOS)** — optional Launch Agent login item; autostart with hidden window (`--background-launch`); Settings toggle (default off)
 - [x] Menu bar / system tray presence (macOS menu bar icon with Open, Scan now, indexing toggle, stats, Quit)
