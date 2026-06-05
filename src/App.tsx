@@ -10,8 +10,10 @@ import { Sidebar } from './components/Sidebar'
 import { useBackgroundIndexing } from './hooks/useBackgroundIndexing'
 import { useFavorites } from './hooks/useFavorites'
 import { useFileScanner } from './hooks/useFileScanner'
+import { usePreviewEmptyStates } from './hooks/usePreviewEmptyStates'
 import { useSettings } from './hooks/useSettings'
 import { useWatchedFolders } from './hooks/useWatchedFolders'
+import { hasNoMemories } from './lib/onboarding'
 import { isTauri } from './lib/tauri'
 import type { NavSection } from './types/memory'
 
@@ -47,6 +49,7 @@ function App() {
   const [contentQuery, setContentQuery] = useState('')
 
   const settingsState = useSettings()
+  const previewEmptyStates = usePreviewEmptyStates()
   const favorites = useFavorites()
   const scannerEnabled =
     isTauri() ||
@@ -91,6 +94,13 @@ function App() {
     folderPaths: memoryScan.folderPaths,
     updateSettings: settingsState.updateSettings,
   })
+
+  const previewEmpty = previewEmptyStates.enabled
+  const showWelcome = hasNoMemories(
+    safeItems,
+    memoryScan.loading,
+    previewEmpty,
+  )
 
   return (
     <div className="flex h-svh overflow-hidden">
@@ -142,6 +152,8 @@ function App() {
                   addingFolder={watchedFolders.addingFolder}
                   foldersDisabled={settingsState.loading || settingsState.saving}
                   folderError={watchedFolders.folderError}
+                  showWelcome={showWelcome}
+                  previewEmpty={previewEmpty}
                   onAddFolder={() => void watchedFolders.addFolder()}
                   onRemoveCustomFolder={(path) => void watchedFolders.removeFolder(path)}
                   onRefresh={() => void memoryScan.refresh()}
@@ -161,6 +173,7 @@ function App() {
                 error={memoryScan.error}
                 favoritesError={favorites.error}
                 query={globalQuery}
+                previewEmpty={previewEmpty}
                 onToggleFavorite={(item) => void favorites.toggleFavorite(item)}
                 onIndexContent={(path) => void memoryScan.indexFile(path)}
                 onReindexContent={(path) =>
@@ -175,6 +188,7 @@ function App() {
                 loading={memoryScan.loading}
                 error={memoryScan.error}
                 query={globalQuery}
+                previewEmpty={previewEmpty}
                 onToggleFavorite={(item) => void favorites.toggleFavorite(item)}
                 onIndexContent={(path) => void memoryScan.indexFile(path)}
                 onReindexContent={(path) =>
@@ -188,6 +202,7 @@ function App() {
                 settingsState={settingsState}
                 memoryScan={memoryScan}
                 indexingQueue={indexingQueue}
+                previewEmptyStates={previewEmptyStates}
               />
             )}
           </div>

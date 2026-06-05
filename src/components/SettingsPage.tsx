@@ -7,6 +7,7 @@ import { isTauri } from '../lib/tauri'
 import { countWatchedFolders } from '../lib/watchedFolders'
 import type { FileScannerState } from '../hooks/useFileScanner'
 import type { BackgroundIndexingState } from '../hooks/useBackgroundIndexing'
+import type { usePreviewEmptyStates } from '../hooks/usePreviewEmptyStates'
 import type { SettingsState } from '../hooks/useSettings'
 import { IndexingQueueStatus } from './IndexingQueueStatus'
 import {
@@ -27,6 +28,7 @@ interface SettingsPageProps {
   settingsState: SettingsState
   memoryScan: FileScannerState
   indexingQueue: BackgroundIndexingState
+  previewEmptyStates: ReturnType<typeof usePreviewEmptyStates>
 }
 
 function SettingsSection({
@@ -212,6 +214,7 @@ export function SettingsPage({
   settingsState,
   memoryScan,
   indexingQueue,
+  previewEmptyStates,
 }: SettingsPageProps) {
   const { settings, loading, saving, error, updateSettings } = settingsState
   const [stats, setStats] = useState<MemoryStatistics>({
@@ -478,6 +481,24 @@ export function SettingsPage({
           </div>
         )}
       </SettingsSection>
+
+      {previewEmptyStates.available && (
+        <SettingsSection
+          title="Developer"
+          description="Dev-only tools for previewing UI without changing your data."
+        >
+          <SettingsRow
+            label="Preview empty states"
+            hint="Hides memories in Timeline, Favorites, and Indexed for UI testing. Does not clear SQLite, clipboard, or indexed files."
+          >
+            <Toggle
+              label="Preview empty states"
+              checked={previewEmptyStates.enabled}
+              onChange={(enabled) => previewEmptyStates.setEnabled(enabled)}
+            />
+          </SettingsRow>
+        </SettingsSection>
+      )}
 
       <SettingsSection
         title="Statistics"

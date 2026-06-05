@@ -20,10 +20,16 @@ import {
   type TimelineTypeFilter,
 } from '../types/memoriesPage'
 import type { MemoryItem } from '../types/memoryItem'
+import { EmptyState } from './EmptyState'
 import { FileDetailsPanel } from './FileDetailsPanel'
 import { MemoriesListRow } from './MemoriesListRow'
 import { MemoryItemCard } from './MemoryItemCard'
 import { TimelineToolbar } from './TimelineToolbar'
+import {
+  primaryButtonClassName,
+  secondaryButtonClassName,
+  WelcomeOnboarding,
+} from './WelcomeOnboarding'
 
 interface FileMemoryTimelineProps {
   items: MemoryItem[]
@@ -45,6 +51,8 @@ interface FileMemoryTimelineProps {
   onIndexContent: (filePath: string) => void
   onReindexContent: (filePath: string) => void
   onToggleFavorite: (item: MemoryItem) => void
+  showWelcome?: boolean
+  previewEmpty?: boolean
 }
 
 export function FileMemoryTimeline({
@@ -64,6 +72,8 @@ export function FileMemoryTimeline({
   onIndexContent,
   onReindexContent,
   onToggleFavorite,
+  showWelcome = false,
+  previewEmpty = false,
 }: FileMemoryTimelineProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [folderFilter, setFolderFilter] = useState<TimelineFolderFilter>('All')
@@ -76,12 +86,17 @@ export function FileMemoryTimeline({
   )
   const q = query.trim()
 
+  const effectiveItems = useMemo(
+    () => (previewEmpty ? [] : items),
+    [previewEmpty, items],
+  )
+
   useEffect(() => {
     saveMemoriesPreferences({ viewMode, sort })
   }, [viewMode, sort])
 
   const displayed = useMemo(() => {
-    const filtered = items.filter(
+    const filtered = effectiveItems.filter(
       (item) =>
         itemMatchesFolderFilter(item, folderFilter) &&
         itemMatchesTypeFilter(item, typeFilter) &&
@@ -102,13 +117,13 @@ export function FileMemoryTimeline({
       item,
       snippet: snippetById.get(item.id) ?? null,
     }))
-  }, [items, folderFilter, typeFilter, q, sort])
+  }, [effectiveItems, folderFilter, typeFilter, q, sort])
 
   const selected = useMemo(() => {
     if (!selectedId) return null
-    if (!items.some((item) => item.id === selectedId)) return null
+    if (!effectiveItems.some((item) => item.id === selectedId)) return null
     return displayed.find((r) => r.item.id === selectedId)?.item ?? null
-  }, [selectedId, displayed, items])
+  }, [selectedId, displayed, effectiveItems])
 
   useEffect(() => {
     setSelectedId(null)
@@ -131,6 +146,15 @@ export function FileMemoryTimeline({
 
   return (
     <section className="space-y-2">
+      {showWelcome && (
+        <WelcomeOnboarding
+          onScanNow={onRefresh}
+          onAddFolder={onAddFolder}
+          scanning={loading}
+          addingFolder={addingFolder}
+        />
+      )}
+
       <TimelineToolbar
         folderFilter={folderFilter}
         customFolders={customWatchedFolders}
@@ -173,14 +197,34 @@ export function FileMemoryTimeline({
 
       <div className="flex items-start gap-5">
         <div className="min-w-0 flex-1">
-          {loading && items.length === 0 ? (
+          {loading && effectiveItems.length === 0 ? (
             <p className="text-sm text-remy-muted">Scanning memory folders…</p>
           ) : displayed.length === 0 ? (
-            <p className="text-sm text-remy-muted">
-              {hasActiveFilters
-                ? 'No items match your filters.'
-                : 'No supported files found.'}
-            </p>
+            hasActiveFilters ? (
+              <p className="text-sm text-remy-muted">No items match your filters.</p>
+            ) : showWelcome ? null : (
+              <EmptyState
+                title="No memories yet"
+                description="Add a folder or enable scanning to start building your memory."
+              >
+                <button
+                  type="button"
+                  onClick={onAddFolder}
+                  disabled={addingFolder || foldersDisabled}
+                  className={primaryButtonClassName}
+                >
+                  {addingFolder ? 'Opening…' : 'Add Folder'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={loading}
+                  className={secondaryButtonClassName}
+                >
+                  {loading ? 'Scanning…' : 'Scan now'}
+                </button>
+              </EmptyState>
+            )
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {displayed.map(({ item, snippet }) => (
@@ -215,12 +259,14 @@ export function FileMemoryTimeline({
             </div>
           )}
 
-          <p className="mt-6 text-xs text-remy-muted">
-            {displayed.length} of {items.length} item
-            {items.length === 1 ? '' : 's'}
-            {typeFilter !== 'All' ? ` · ${typeFilter}` : ''}
-            {folderFilter !== 'All' ? ` · ${folderFilter}` : ''}
-          </p>
+          {displayed.length > 0 && (
+            <p className="mt-6 text-xs text-remy-muted">
+              {displayed.length} of {effectiveItems.length} item
+              {effectiveItems.length === 1 ? '' : 's'}
+              {typeFilter !== 'All' ? ` · ${typeFilter}` : ''}
+              {folderFilter !== 'All' ? ` · ${folderFilter}` : ''}
+            </p>
+          )}
         </div>
 
         {selected && (

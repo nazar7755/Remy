@@ -11,6 +11,7 @@ import {
   type MemoriesViewMode,
 } from '../types/memoriesPage'
 import type { MemoryItem } from '../types/memoryItem'
+import { EmptyState } from './EmptyState'
 import { FileDetailsPanel } from './FileDetailsPanel'
 import { MemoriesListRow } from './MemoriesListRow'
 import { MemoryItemCard } from './MemoryItemCard'
@@ -25,6 +26,7 @@ interface FavoritesPageProps {
   onToggleFavorite: (item: MemoryItem) => void
   onIndexContent: (filePath: string) => void
   onReindexContent: (filePath: string) => void
+  previewEmpty?: boolean
 }
 
 export function FavoritesPage({
@@ -36,6 +38,7 @@ export function FavoritesPage({
   onToggleFavorite,
   onIndexContent,
   onReindexContent,
+  previewEmpty = false,
 }: FavoritesPageProps) {
   const [localQuery, setLocalQuery] = useState('')
   const [viewMode, setViewMode] = useState<MemoriesViewMode>(() =>
@@ -48,12 +51,17 @@ export function FavoritesPage({
 
   const effectiveQuery = query.trim() || localQuery.trim()
 
+  const effectiveItems = useMemo(
+    () => (previewEmpty ? [] : favoriteItems),
+    [previewEmpty, favoriteItems],
+  )
+
   useEffect(() => {
     saveMemoriesPreferences({ ...loadMemoriesPreferences(), viewMode, sort })
   }, [viewMode, sort])
 
   const displayed = useMemo(() => {
-    const filtered = favoriteItems.filter((item) =>
+    const filtered = effectiveItems.filter((item) =>
       itemMatchesQuery(item, effectiveQuery),
     )
     const withSnippets = filtered.map((item) => ({
@@ -71,7 +79,7 @@ export function FavoritesPage({
       item,
       snippet: snippetById.get(item.id) ?? null,
     }))
-  }, [favoriteItems, effectiveQuery, sort])
+  }, [effectiveItems, effectiveQuery, sort])
 
   const selected = useMemo(() => {
     if (!selectedId) return null
@@ -139,14 +147,19 @@ export function FavoritesPage({
 
       <div className="flex items-start gap-5">
         <div className="min-w-0 flex-1">
-          {loading && favoriteItems.length === 0 ? (
+          {loading && effectiveItems.length === 0 ? (
             <p className="text-sm text-remy-muted">Loading favorites…</p>
           ) : displayed.length === 0 ? (
-            <p className="text-sm text-remy-muted">
-              {effectiveQuery
-                ? 'No favorites match your search.'
-                : 'No favorites yet. Star items from Timeline.'}
-            </p>
+            effectiveQuery ? (
+              <p className="text-sm text-remy-muted">
+                No favorites match your search.
+              </p>
+            ) : (
+              <EmptyState
+                title="No favorites yet"
+                description="Star important memories to find them quickly."
+              />
+            )
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {displayed.map(({ item, snippet }) => (
@@ -181,9 +194,11 @@ export function FavoritesPage({
             </div>
           )}
 
-          <p className="mt-6 text-xs text-remy-muted">
-            {displayed.length} favorite{displayed.length === 1 ? '' : 's'}
-          </p>
+          {displayed.length > 0 && (
+            <p className="mt-6 text-xs text-remy-muted">
+              {displayed.length} favorite{displayed.length === 1 ? '' : 's'}
+            </p>
+          )}
         </div>
 
         {selected && (

@@ -11,6 +11,7 @@ import {
   type MemoriesViewMode,
 } from '../types/memoriesPage'
 import type { MemoryItem } from '../types/memoryItem'
+import { EmptyState } from './EmptyState'
 import { FileDetailsPanel } from './FileDetailsPanel'
 import { MemoriesListRow } from './MemoriesListRow'
 import { MemoryItemCard } from './MemoryItemCard'
@@ -24,6 +25,7 @@ interface IndexedPageProps {
   onToggleFavorite: (item: MemoryItem) => void
   onIndexContent: (filePath: string) => void
   onReindexContent: (filePath: string) => void
+  previewEmpty?: boolean
 }
 
 export function IndexedPage({
@@ -34,8 +36,8 @@ export function IndexedPage({
   onToggleFavorite,
   onIndexContent,
   onReindexContent,
+  previewEmpty = false,
 }: IndexedPageProps) {
-  const items = indexedItems ?? []
   const [localQuery, setLocalQuery] = useState('')
   const [viewMode, setViewMode] = useState<MemoriesViewMode>(() =>
     loadMemoriesPreferences().viewMode,
@@ -46,6 +48,11 @@ export function IndexedPage({
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const effectiveQuery = query.trim() || localQuery.trim()
+
+  const items = useMemo(
+    () => (previewEmpty ? [] : (indexedItems ?? [])),
+    [previewEmpty, indexedItems],
+  )
 
   useEffect(() => {
     saveMemoriesPreferences({ ...loadMemoriesPreferences(), viewMode, sort })
@@ -139,11 +146,16 @@ export function IndexedPage({
           {loading && items.length === 0 ? (
             <p className="text-sm text-remy-muted">Loading indexed files…</p>
           ) : displayed.length === 0 ? (
-            <p className="text-sm text-remy-muted">
-              {effectiveQuery
-                ? 'No indexed files match your search.'
-                : 'No indexed files yet. Open a txt, pdf, or docx file and use Index Content in the details panel.'}
-            </p>
+            effectiveQuery ? (
+              <p className="text-sm text-remy-muted">
+                No indexed files match your search.
+              </p>
+            ) : (
+              <EmptyState
+                title="No indexed files yet"
+                description="Index documents to search inside PDF, DOCX and TXT files."
+              />
+            )
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {displayed.map(({ item, snippet }) => (
@@ -180,10 +192,11 @@ export function IndexedPage({
             </div>
           )}
 
-          <p className="mt-6 text-xs text-remy-muted">
-            {displayed.length} indexed file{displayed.length === 1 ? '' : 's'}{' '}
-            · Downloads, Desktop, Documents
-          </p>
+          {displayed.length > 0 && (
+            <p className="mt-6 text-xs text-remy-muted">
+              {displayed.length} indexed file{displayed.length === 1 ? '' : 's'}
+            </p>
+          )}
         </div>
 
         {selected && (

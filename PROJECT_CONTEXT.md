@@ -84,7 +84,8 @@ flowchart LR
 - **`useBackgroundIndexing`**: After initial UI render (~2s), enqueues indexable files with `indexStatus === 'idle'` and processes them **one at a time** via `indexFile`. TXT/DOCX: 5s between jobs, max 10MB. **PDF is off by default** — separate Settings toggle with max size (default 5MB), delay (default 10s), 60s Rust extraction timeout, and panic isolation. Failed PDFs get `indexStatus === 'error'` and are not retried in the same session. Queue status shown in the sidebar and Settings.
 - **`FileScanner` + adapters**: `TauriFileSystemAdapter` (production) or `MockFileSystemAdapter` (Vite-only browser dev).
 - **`contentSearch`**: Client-side filter by name, path, extension, type, source, and indexed/plain text.
-- **Navigation**: `Timeline`, `Memories`, `Favorites`, `Indexed`, and `Settings` are implemented; `Search` is routed in the shell but not built yet.
+- **Navigation**: `Timeline`, `Favorites`, `Indexed`, and `Settings` are implemented; `Search` is not built yet.
+- **Onboarding & empty states**: First launch shows a compact welcome card on Timeline when `useFileScanner` has zero items (files + clipboard) and scanning is not in progress. Actions: **Scan now** and **Add Folder** (no Settings shortcut — new users are steered toward capture first). Section empty states share an `EmptyState` component (dashed border, consistent typography). Dev-only **Preview empty states** toggle in Settings (`localStorage` flag `remy.previewEmptyStates`) hides list data in the UI without touching SQLite, clipboard history, or indexed files.
 - **Indexed page**: Filtered view of live items with `indexStatus === 'indexed'` and extracted text (txt/pdf/docx from all scan sources); no source filters.
 - **`useFavorites`**: Independent favorites collection in SQLite (`favorites` table: `memory_id` + JSON snapshot per pin); `useFileScanner` marks live items with `isFavorite`; Favorites page uses `resolveFavoriteItems()` to merge live scan data with saved snapshots — no duplicate rows.
 - **Memories page**: Database-style browse of all items (list/grid, type filters, sort, search); preferences (view mode, sort) persist in `localStorage`. Timeline remains the chronological activity feed with source filters unchanged.
@@ -146,7 +147,9 @@ Unified shape for files and clipboard snippets:
 
 ## Current capabilities (implemented)
 
-- Dark, Linear-inspired layout: sidebar, global search bar, timeline and Memories browse views
+- Dark, Linear-inspired layout: sidebar, global search bar, timeline browse view
+- **First-launch onboarding**: compact welcome card on Timeline (watched folders, clipboard, indexing, local-only) with Scan now and Add Folder
+- **Empty states**: Favorites, Indexed, and Timeline show guided copy when a section has no items; item-count footers hidden when lists are empty
 - Real folder scanning on macOS/Windows/Linux (via Tauri)
 - Clipboard text capture with deduplication (persisted across restarts)
 - Indexed file text cache on disk (skip re-extraction when file unchanged)
@@ -177,6 +180,10 @@ npm run tauri:build
 ```
 
 Lint: `npm run lint`
+
+### Testing onboarding and empty states safely
+
+In **dev** (`npm run dev` or `npm run tauri:dev`), open **Settings → Developer → Preview empty states**. This UI-only flag pretends Timeline, Favorites, and Indexed are empty so you can review welcome and empty-state copy without clearing `remy.sqlite`, clipboard history, or indexed content. Toggle off to restore your real data view. Production builds omit the Developer section.
 
 ## Explicit non-goals (for now)
 
