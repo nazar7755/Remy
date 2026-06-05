@@ -21,6 +21,9 @@ interface TauriAppSettingsDto {
   background_pdf_indexing_enabled?: boolean
   background_pdf_max_size_mb?: number
   background_pdf_delay_sec?: number
+  ocr_image_indexing_enabled?: boolean
+  background_ocr_max_size_mb?: number
+  background_ocr_delay_sec?: number
   custom_watched_folders?: string[]
   run_in_background_when_closed?: boolean
   launch_at_login?: boolean
@@ -65,6 +68,12 @@ function fromTauriSettings(dto: TauriAppSettingsDto): AppSettings {
       dto.background_pdf_max_size_mb ?? DEFAULT_SETTINGS.backgroundPdfMaxSizeMb,
     backgroundPdfDelaySec:
       dto.background_pdf_delay_sec ?? DEFAULT_SETTINGS.backgroundPdfDelaySec,
+    ocrImageIndexingEnabled:
+      dto.ocr_image_indexing_enabled ?? DEFAULT_SETTINGS.ocrImageIndexingEnabled,
+    backgroundOcrMaxSizeMb:
+      dto.background_ocr_max_size_mb ?? DEFAULT_SETTINGS.backgroundOcrMaxSizeMb,
+    backgroundOcrDelaySec:
+      dto.background_ocr_delay_sec ?? DEFAULT_SETTINGS.backgroundOcrDelaySec,
     customWatchedFolders: dto.custom_watched_folders ?? [],
     runInBackgroundWhenClosed:
       dto.run_in_background_when_closed ?? DEFAULT_SETTINGS.runInBackgroundWhenClosed,
@@ -86,6 +95,9 @@ function toTauriSettings(settings: AppSettings): TauriAppSettingsDto {
     background_pdf_indexing_enabled: clamped.backgroundPdfIndexingEnabled,
     background_pdf_max_size_mb: clamped.backgroundPdfMaxSizeMb,
     background_pdf_delay_sec: clamped.backgroundPdfDelaySec,
+    ocr_image_indexing_enabled: clamped.ocrImageIndexingEnabled,
+    background_ocr_max_size_mb: clamped.backgroundOcrMaxSizeMb,
+    background_ocr_delay_sec: clamped.backgroundOcrDelaySec,
     custom_watched_folders: clamped.customWatchedFolders,
     run_in_background_when_closed: clamped.runInBackgroundWhenClosed,
     launch_at_login: clamped.launchAtLogin,

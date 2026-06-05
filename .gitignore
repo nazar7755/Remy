@@ -48,6 +48,7 @@ Thumbs.db
 target/
 src-tauri/target/
 src-tauri/gen/schemas/
+src-tauri/ocr-models/
 
 # Tauri bundle artifacts (optional local builds)
 src-tauri/target/release/bundle/

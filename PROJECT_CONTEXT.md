@@ -22,7 +22,7 @@ Tagline (in-app): *Your second memory — files and clipboard.*
 | **UI** | React 19, TypeScript, Tailwind CSS 4, Vite 8 |
 | **Shell** | Tauri 2 (Rust) — `src-tauri/` — features: `protocol-asset`, `tray-icon` |
 | **Plugins** | `tauri-plugin-fs`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager`, `tauri-plugin-dialog`, `tauri-plugin-notification`, `tauri-plugin-autostart` (macOS launch at login), `tauri-plugin-global-shortcut` (desktop global hotkey) |
-| **Rust deps** | `pdf-extract`, `zip` + `quick-xml` (DOCX), `arboard` (clipboard polling) |
+| **Rust deps** | `pdf-extract`, `zip` + `quick-xml` (DOCX), `ocrs` + `rten` (image OCR), `image`, `arboard` (clipboard polling) |
 
 ## Repository layout
 
@@ -40,6 +40,7 @@ Remy/
 │   │   ├── persistence/    # SQLite local store (clipboard + index cache)
 │   │   ├── clipboard_monitor.rs
 │   │   ├── content_indexer.rs
+│   │   ├── ocr_engine.rs        # ocrs neural OCR for png/jpg/jpeg/webp
 │   │   ├── background_mode.rs   # hide-on-close, prevent exit, dock reopen
 │   │   ├── launch_at_login.rs   # macOS Launch Agent autostart, --background-launch
 │   │   ├── global_hotkey.rs     # Cmd+Shift+Space → quick search overlay
@@ -86,7 +87,7 @@ flowchart LR
 ### Frontend
 
 - **`useFileScanner`**: Polls enabled default folders (Downloads, Desktop, Documents) plus user-added custom watch folders every 5s; polls clipboard every 2s when running in Tauri. Merges file + clipboard items into one timeline. After each file scan, asynchronously restores cached index text from disk (non-blocking UI). Exposes `indexFile` for manual and background indexing.
-- **`useBackgroundIndexing`**: After initial UI render (~2s), enqueues indexable files with `indexStatus === 'idle'` and processes them **one at a time** via `indexFile`. TXT/DOCX: 5s between jobs, max 10MB. **PDF is off by default** — separate Settings toggle with max size (default 5MB), delay (default 10s), 60s Rust extraction timeout, and panic isolation. Failed PDFs get `indexStatus === 'error'` and are not retried in the same session. Queue status shown in the sidebar and Settings.
+- **`useBackgroundIndexing`**: After initial UI render (~2s), enqueues indexable files with `indexStatus === 'idle'` and processes them **one at a time** via `indexFile`. TXT/DOCX: 5s between jobs, max 10MB. **OCR image indexing is postponed** (`OCR_INDEXING_ENABLED = false` in `src/lib/ocrFeature.ts` and `ocr_engine.rs`) — no OCR on startup, scan, or background queue. **PDF is off by default** — separate Settings toggle with max size (default 5MB), delay (default 10s), 60s Rust extraction timeout, and panic isolation. Failed PDF jobs get `indexStatus === 'error'` and are not retried in the same session. Queue status shown in the sidebar and Settings.
 - **`FileScanner` + adapters**: `TauriFileSystemAdapter` (production) or `MockFileSystemAdapter` (Vite-only browser dev).
 - **`contentSearch`**: Client-side filter by name, path, extension, type, source, and indexed/plain text.
 - **`quickSearchRecentActivity`**: Builds empty-query Recent Activity sections for Quick Search (Recent Files, Recent Clipboard, Favorites); snapshotted at overlay open, not recomputed on keystroke.
@@ -105,7 +106,7 @@ flowchart LR
 | `scan_all_memory_folders` | List supported files in enabled default folders plus `custom_watched_folders` from settings |
 | `register_watched_folder_scopes` | Extend asset-protocol scope for thumbnails in watched folders |
 | `open_file_path` / `reveal_file_path` | OS open/reveal for any watched path (including custom folders) |
-| `index_file_content` | Extract text from `.txt`, `.pdf`, `.docx` (max ~200k chars). PDF runs in a isolated thread with **60s timeout** and **`catch_unwind`** so a bad PDF cannot crash the app. |
+| `index_file_content` | Extract text from `.txt`, `.pdf`, `.docx` (max ~200k chars). OCR images disabled at compile-time flag. PDF runs in an isolated thread with **60s timeout** and **`catch_unwind`**. |
 | `poll_clipboard` / `get_clipboard_entries` | Track text clipboard (dedupe window 30s, max 500 entries); persisted to SQLite |
 | `lookup_file_index_cache` | Batch restore cached index text for scanned paths (startup hydration) |
 | `hydrate_clipboard_history` | Reload clipboard rows from disk into memory (optional; also runs at app setup) |
@@ -155,7 +156,7 @@ Background capture (file poll, clipboard poll, indexing queue) stays in the Reac
   - **Indexed page filter**: `resolveIndexedItems(items)` → `isIndexedFile(item)` requires `indexStatus === 'indexed'` **and** non-empty `content`. Same `items` array powers Timeline/Memories search via `contentSearch.ts`.
   - **Failed indexing**: `indexStatus === 'error'` with `indexError` message on the memory item (UI label: Failed). Background queue skips non-`idle` files; attempted paths are remembered for the session so failures are not retried automatically.
 - **Local-first only** — no network, no cloud APIs.
-- **Settings**: Single row `app_settings` key `app_settings` stores JSON (`scan_*`, `custom_watched_folders`, poll intervals, `clipboard_enabled`, `background_indexing_enabled`, `background_index_scope`, `background_pdf_indexing_enabled`, `background_pdf_max_size_mb`, `background_pdf_delay_sec`, `launch_at_login`, `run_in_background_when_closed`). Defaults seeded on first DB open. Meta flag `background_close_notification_shown` tracks the one-time hide notification.
+- **Settings**: Single row `app_settings` key `app_settings` stores JSON (`scan_*`, `custom_watched_folders`, poll intervals, `clipboard_enabled`, `background_indexing_enabled`, `background_index_scope`, `background_pdf_indexing_enabled`, `background_pdf_max_size_mb`, `background_pdf_delay_sec`, `ocr_image_indexing_enabled`, `launch_at_login`, `run_in_background_when_closed`). Defaults seeded on first DB open. Meta flag `background_close_notification_shown` tracks the one-time hide notification.
 - **Startup**: Clipboard hydrate runs in Tauri `setup` (fast SQLite read). Index cache hydrate runs in the frontend after the first folder scan via `lookup_file_index_cache` (async, does not block the initial render). Background indexing queue starts ~200ms after first paint (does not block startup).
 
 ## Data model
@@ -167,7 +168,7 @@ Unified shape for files and clipboard snippets:
 - **Sources**: `Downloads`, `Desktop`, `Documents`, `Clipboard`, plus custom folder display names (folder basename, e.g. `Projects`)
 - **Types**: `PDF`, `Image`, `Text`, `Document`, `Spreadsheet`, `Archive`, `Clipboard`
 - **Supported file extensions**: `pdf`, `png`, `jpg`, `jpeg`, `webp`, `txt`, `docx`, `xlsx`, `csv`, `zip`
-- **Indexable for search**: `txt`, `pdf`, `docx` (`indexStatus`: `idle` | `loading` | `indexed` | `error`; UI labels: Not indexed / Indexed / Failed)
+- **Indexable for search**: `txt`, `pdf`, `docx` (images: thumbnails only; OCR postponed)
 - **Index metadata** (files): `indexedCharCount`, `indexedAt` — persisted in `file_index_cache.indexed_at_ms` with extracted text
 - **Favorites**: `isFavorite` on live items; persisted collection keyed by stable `MemoryItem.id` (file path or `clipboard://…`) with snapshot JSON for display when not in the current scan
 - **Image thumbnails**: `png`, `jpg`, `jpeg`, `webp` use `MemoryItem.filePath` via Tauri `convertFileSrc` (asset protocol); 64×64 lazy previews on Timeline, Memories, Favorites, and Indexed cards (browser dev shows type icons only)
@@ -190,8 +191,8 @@ Unified shape for files and clipboard snippets:
 - **Favorites** sidebar: dedicated page listing all pinned items from every source (no source filters); star toggle on Timeline/Memories cards and details panel
 - **Indexed** sidebar: dedicated page for files with cached extracted text (Downloads, Desktop, Documents); search, sort, index metadata on cards
 - Timeline search with highlighted snippets
-- Detail panel: Index Content / Reindex / Clear index for txt·pdf·docx; index status (Not indexed / Indexed / Failed), character count, timestamp; open / reveal / copy path
-- **Background indexing**: off by default; optional queue for TXT/DOCX (configurable scope); session limits; queue status in sidebar and Settings
+- Detail panel: Index Content / Reindex / Clear index for txt·pdf·docx; open / reveal / copy path (image OCR controls hidden while postponed)
+- **Background indexing**: off by default; optional queue for TXT/DOCX (configurable scope) and PDF; OCR not queued; session limits; queue status in sidebar and Settings
 - **Indexing recovery** (Settings → Background indexing): **Clear all indexed content** (SQLite + in-memory reset) and **Reset indexing queue** (stop pending jobs, keep indexed files)
 - Settings statistics: indexed file count and total indexed characters
 - **Background mode (Phase 1)**: closing the window hides Remy instead of quitting (setting on by default); one-time system notification on first hide; file/clipboard/indexing polling continues in the hidden webview
@@ -200,7 +201,7 @@ Unified shape for files and clipboard snippets:
 - **Global hotkey (macOS/desktop)**: `Cmd + Shift + Space` opens a compact **Quick Search** overlay (760×440, always on top, frameless, dark theme) instead of the full Remy window; searches files, clipboard, and indexed content via `contentSearch.ts`; when the search box is empty, shows **Recent Activity** (Recent Files, Recent Clipboard, Favorites) snapshotted once at open; ↑↓ navigate, Enter open/copy, Esc close, Cmd+Enter open in full Remy. Falls back to main window + header search if the overlay is unavailable. Settings → Shortcuts displays the binding; warns if registration failed
 - **Quick Search Recent Activity** (empty query): three lightweight sections built by `quickSearchRecentActivity.ts` — **Recent Files** (up to 10, newest by file mtime/`createdAtIso`), **Recent Clipboard** (up to 5, newest capture time), **Favorites** (up to 5, SQLite order via `resolveFavoriteItems`). Snapshot taken after first scan + favorites load; refreshed on `focus-quick-search`; not recomputed on keystroke. Typing hides Recent Activity and shows normal search results; clearing the query restores the snapshot. Same keyboard actions as search results (Enter, Cmd+Enter, Esc)
 - Mock timeline when running `npm run dev` without Tauri
-- **Settings** page: default folder scan toggles, poll intervals, clipboard privacy, shortcuts (read-only display), startup (launch at login + run in background when closed), background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status — custom folders are managed on **Timeline**
+- **Settings** page: default folder scan toggles, poll intervals, clipboard privacy, shortcuts (read-only display), startup (launch at login + run in background when closed), background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status — custom folders are managed on **Timeline**. OCR settings removed from UI while postponed.
 
 ## Development
 
@@ -241,6 +242,10 @@ Production builds omit the Developer section.
 3. **Open from tray** — Tray → **Open Remy** (or Dock click) shows the main window.
 4. **Disable** — Settings → Startup → turn off *Launch Remy at login*. Remy is removed from Login Items; next login does not start Remy automatically.
 5. **Manual simulate** — Quit Remy, then from Terminal run the built app with `--background-launch` (same flag the login item uses); window should stay hidden.
+
+### OCR image indexing (postponed)
+
+OCR code remains in the repo (`ocr_engine.rs`, `src/lib/ocrFeature.ts`) but is **disabled** via `OCR_INDEXING_ENABLED = false`. Models are not loaded at startup. Re-enable only after moving OCR to a safer dedicated worker/background process.
 
 ### Testing global hotkey & Quick Search overlay (macOS Tauri only)
 

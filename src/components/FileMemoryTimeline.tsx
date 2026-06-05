@@ -222,6 +222,7 @@ export function FileMemoryTimeline({
                   isSelected={selectedId === item.id}
                   searchQuery={q}
                   contentSnippet={snippet}
+                  showIndexMetadata={item.indexStatus === 'indexed'}
                   onToggleFavorite={() => onToggleFavorite(item)}
                   onSelect={() =>
                     setSelectedId((id) => (id === item.id ? null : item.id))
@@ -238,6 +239,7 @@ export function FileMemoryTimeline({
                   isSelected={selectedId === item.id}
                   searchQuery={q}
                   contentSnippet={snippet}
+                  showIndexMetadata={item.indexStatus === 'indexed'}
                   onToggleFavorite={() => onToggleFavorite(item)}
                   onSelect={() =>
                     setSelectedId((id) => (id === item.id ? null : item.id))

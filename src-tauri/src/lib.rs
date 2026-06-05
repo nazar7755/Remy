@@ -4,11 +4,23 @@ mod clipboard_monitor;
 mod commands;
 mod content_indexer;
 mod global_hotkey;
+mod ocr_engine;
 mod persistence;
 mod quick_search;
 mod tray;
 
+use std::path::PathBuf;
 use tauri::Manager;
+
+fn resolve_ocr_models_dir(handle: &tauri::AppHandle) -> PathBuf {
+    if let Ok(resource_dir) = handle.path().resource_dir() {
+        let bundled = resource_dir.join("ocr-models");
+        if bundled.join("text-detection.rten").exists() {
+            return bundled;
+        }
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ocr-models")
+}
 
 fn register_core_plugins(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     let builder = builder
@@ -58,6 +70,9 @@ pub fn run() {
         .manage(store)
         .manage(global_hotkey::GlobalHotkeyState::new())
         .setup(|app| {
+            let models_dir = resolve_ocr_models_dir(&app.handle());
+            ocr_engine::init(&models_dir);
+
             if let Ok(entries) = app.state::<persistence::RemyStore>().load_clipboard_entries() {
                 let _ = app
                     .state::<clipboard_monitor::ClipboardMonitor>()

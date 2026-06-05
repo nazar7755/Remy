@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { OCR_INDEXING_ENABLED } from '../lib/ocrFeature'
+import { getOcrPreview } from '../lib/fileContentPreview'
 import { formatIndexStatusLabel } from '../lib/indexMetadata'
 import { memoryItemTypeStyles } from '../lib/memoryItemStyles.tsx'
 import { isTauri } from '../lib/tauri'
@@ -10,8 +12,8 @@ import {
   revealLabel,
 } from '../services/fileActions'
 import { FavoriteStarButton } from './FavoriteStarButton'
-import { canIndexFile } from '../services/contentIndexer'
-import { isClipboardItem, type MemoryItem } from '../types/memoryItem'
+import { canManuallyIndexFile } from '../services/contentIndexer'
+import { isClipboardItem, isImageFile, type MemoryItem } from '../types/memoryItem'
 
 interface FileDetailsPanelProps {
   item: MemoryItem
@@ -148,6 +150,8 @@ export function FileDetailsPanel({
 
   const desktop = isTauri()
   const clipboard = item ? isClipboardItem(item) : false
+  const imageFile = item ? isImageFile(item) : false
+  const ocrPreview = item ? getOcrPreview(item) : null
   const style =
     item?.type != null
       ? (memoryItemTypeStyles[item.type] ?? defaultItemStyle)
@@ -156,7 +160,7 @@ export function FileDetailsPanel({
     !!item &&
     !clipboard &&
     !!extension &&
-    canIndexFile(extension) &&
+    canManuallyIndexFile(extension) &&
     !!onIndexContent
   const isLoading = indexStatus === 'loading'
   const isIndexed = indexStatus === 'indexed'
@@ -208,8 +212,8 @@ export function FileDetailsPanel({
 
   const indexStatusValue =
     isFailed && item.indexError
-      ? `${formatIndexStatusLabel(indexStatus)} — ${item.indexError}`
-      : formatIndexStatusLabel(indexStatus)
+      ? `${formatIndexStatusLabel(indexStatus, { ocr: imageFile })} — ${item.indexError}`
+      : formatIndexStatusLabel(indexStatus, { ocr: imageFile })
 
   return (
     <aside
@@ -320,6 +324,19 @@ export function FileDetailsPanel({
               <DetailRow label="Indexed at" value={indexedAt} />
             )}
           </>
+        )}
+        {imageFile && OCR_INDEXING_ENABLED && (
+          <div className="py-2">
+            <dt className="text-[11px] font-medium tracking-wide text-remy-muted uppercase">
+              OCR Preview
+            </dt>
+            <dd className="mt-1 text-sm whitespace-pre-wrap text-remy-text">
+              {ocrPreview ??
+                (isLoading
+                  ? 'Running OCR…'
+                  : 'Image not indexed yet.')}
+            </dd>
+          </div>
         )}
       </dl>
 

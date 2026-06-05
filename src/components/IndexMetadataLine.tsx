@@ -1,4 +1,4 @@
-import type { MemoryItem } from '../types/memoryItem'
+import { isImageFile, type MemoryItem } from '../types/memoryItem'
 
 interface IndexMetadataLineProps {
   item: MemoryItem
@@ -22,7 +22,11 @@ export function IndexMetadataLine({ item, className = '' }: IndexMetadataLinePro
           ·{' '}
         </span>
       )}
-      {item.indexedAt && <span>Indexed {item.indexedAt}</span>}
+      {item.indexedAt && (
+        <span>
+          {isImageFile(item) ? 'Indexed (OCR)' : 'Indexed'} {item.indexedAt}
+        </span>
+      )}
     </p>
   )
 }

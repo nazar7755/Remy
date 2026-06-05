@@ -1,9 +1,11 @@
+import { OCR_INDEXING_ENABLED } from '../lib/ocrFeature'
 import { normalizeFilePath } from '../lib/filePaths'
+import { isExtensionInBackgroundScope, type AppSettings } from '../types/settings'
 import {
-  isExtensionInBackgroundScope,
-  type AppSettings,
-} from '../types/settings'
-import { isClipboardItem, type MemoryItem } from '../types/memoryItem'
+  isClipboardItem,
+  isImageExtension,
+  type MemoryItem,
+} from '../types/memoryItem'
 
 /** Outcome of a single background index attempt. */
 export type BackgroundIndexOutcome = 'indexed' | 'error' | 'skipped'
@@ -27,6 +29,14 @@ export function isPdfFilePath(filePath: string, item?: MemoryItem): boolean {
   return filePath.toLowerCase().endsWith('.pdf')
 }
 
+export function isOcrImageItem(item: MemoryItem): boolean {
+  return (
+    OCR_INDEXING_ENABLED &&
+    !isClipboardItem(item) &&
+    isImageExtension(item.extension)
+  )
+}
+
 /** Files eligible for automatic background indexing. */
 export function isEligibleForBackgroundIndex(
   item: MemoryItem,
@@ -37,6 +47,10 @@ export function isEligibleForBackgroundIndex(
 
   if (item.extension === 'pdf') {
     return settings.backgroundPdfIndexingEnabled
+  }
+
+  if (isImageExtension(item.extension)) {
+    return false
   }
 
   if (item.fileSizeBytes > BACKGROUND_INDEX_MAX_FILE_BYTES) return false
@@ -78,9 +92,24 @@ export function collectBackgroundIndexCandidates(
   return candidates
 }
 
+export function countOcrCandidatesInQueue(
+  queuePaths: readonly string[],
+  items: MemoryItem[],
+): number {
+  return queuePaths.filter((path) => {
+    const item = items.find(
+      (i) => normalizeFilePath(i.filePath) === normalizeFilePath(path),
+    )
+    return item != null && isOcrImageItem(item)
+  }).length
+}
+
 export function getPostJobDelayMs(item: MemoryItem, settings: AppSettings): number {
   if (item.extension === 'pdf') {
     return settings.backgroundPdfDelaySec * 1000
+  }
+  if (isImageExtension(item.extension)) {
+    return settings.backgroundOcrDelaySec * 1000
   }
   return INDEX_JOB_DELAY_MS
 }

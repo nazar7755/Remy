@@ -34,12 +34,13 @@ export function emptyIndexMetadata(): {
 
 export function formatIndexStatusLabel(
   status: 'idle' | 'loading' | 'indexed' | 'error',
+  options?: { ocr?: boolean },
 ): string {
   switch (status) {
     case 'loading':
       return 'Indexing…'
     case 'indexed':
-      return 'Indexed'
+      return options?.ocr ? 'Indexed (OCR)' : 'Indexed'
     case 'error':
       return 'Failed'
     default:

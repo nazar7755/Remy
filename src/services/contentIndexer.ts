@@ -1,6 +1,15 @@
+import { OCR_INDEXING_ENABLED } from '../lib/ocrFeature'
 import { isTauri, tauriInvoke } from '../lib/tauri'
-import { PDF_INDEX_TIMEOUT_MS } from '../types/settings'
-import { isIndexableExtension } from '../types/memoryItem'
+import {
+  OCR_INDEX_TIMEOUT_MS,
+  PDF_INDEX_TIMEOUT_MS,
+  type AppSettings,
+} from '../types/settings'
+import {
+  isContentIndexableExtension,
+  isImageExtension,
+  isIndexableExtension,
+} from '../types/memoryItem'
 import { mockContentForFile } from './fileScanner/mockContent'
 
 export async function indexFileContent(
@@ -29,7 +38,7 @@ export async function indexFileContent(
       invokePromise,
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(
-          () => reject(new Error(`PDF indexing timed out after ${timeoutMs}ms`)),
+          () => reject(new Error(`Indexing timed out after ${timeoutMs}ms`)),
           timeoutMs,
         )
       }),
@@ -45,10 +54,45 @@ export async function clearFileIndex(filePath: string): Promise<void> {
   await tauriInvoke('clear_file_index', { path: filePath })
 }
 
-export function canIndexFile(extension: string): boolean {
+/** Manual Index / Reindex in Details — images only when OCR is enabled. */
+export function canManuallyIndexFile(extension: string): boolean {
+  if (isImageExtension(extension)) {
+    return OCR_INDEXING_ENABLED
+  }
   return isIndexableExtension(extension)
+}
+
+/** Whether background OCR should run for images. */
+export function isBackgroundOcrEnabled(
+  settings: Pick<AppSettings, 'ocrImageIndexingEnabled' | 'backgroundIndexingEnabled'>,
+): boolean {
+  return (
+    OCR_INDEXING_ENABLED &&
+    settings.backgroundIndexingEnabled &&
+    settings.ocrImageIndexingEnabled
+  )
+}
+
+export function canIndexFile(
+  extension: string,
+  settings?: Pick<AppSettings, 'ocrImageIndexingEnabled'>,
+): boolean {
+  if (isIndexableExtension(extension)) return true
+  if (isImageExtension(extension)) {
+    return OCR_INDEXING_ENABLED && (settings?.ocrImageIndexingEnabled ?? false)
+  }
+  return false
+}
+
+/** Whether cached index text may exist for this file type. */
+export function hasIndexableContentType(extension: string): boolean {
+  return isContentIndexableExtension(extension)
 }
 
 export function pdfIndexTimeoutMs(): number {
   return PDF_INDEX_TIMEOUT_MS
+}
+
+export function ocrIndexTimeoutMs(): number {
+  return OCR_INDEX_TIMEOUT_MS
 }

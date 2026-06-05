@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { normalizeFilePath } from '../lib/filePaths'
 import { isTauri } from '../lib/tauri'
+import { backgroundOcrMaxFileBytes, type AppSettings } from '../types/settings'
 import {
   collectBackgroundIndexCandidates,
+  countOcrCandidatesInQueue,
   getPostJobDelayMs,
   INDEX_QUEUE_STARTUP_DELAY_MS,
+  isOcrImageItem,
   type BackgroundIndexOutcome,
 } from '../services/indexingQueue'
-import type { AppSettings } from '../types/settings'
 import type { MemoryItem } from '../types/memoryItem'
 
 export type { BackgroundIndexOutcome } from '../services/indexingQueue'
@@ -20,6 +22,7 @@ export interface BackgroundIndexingState {
   queuedCount: number
   indexedCount: number
   indexingPdf: boolean
+  indexingOcr: boolean
 }
 
 interface QueueUiState {
@@ -27,6 +30,7 @@ interface QueueUiState {
   currentFileName: string | null
   queuedCount: number
   indexingPdf: boolean
+  indexingOcr: boolean
 }
 
 const DISABLED_STATE: BackgroundIndexingState = {
@@ -35,6 +39,7 @@ const DISABLED_STATE: BackgroundIndexingState = {
   queuedCount: 0,
   indexedCount: 0,
   indexingPdf: false,
+  indexingOcr: false,
 }
 
 function nextQueueUi(patch: Partial<QueueUiState>): QueueUiState {
@@ -44,6 +49,7 @@ function nextQueueUi(patch: Partial<QueueUiState>): QueueUiState {
       currentFileName: null,
       queuedCount: patch.queuedCount ?? 0,
       indexingPdf: false,
+      indexingOcr: false,
     }
   }
 
@@ -53,6 +59,7 @@ function nextQueueUi(patch: Partial<QueueUiState>): QueueUiState {
       currentFileName: patch.currentFileName,
       queuedCount: patch.queuedCount ?? 0,
       indexingPdf: patch.indexingPdf ?? false,
+      indexingOcr: patch.indexingOcr ?? false,
     }
   }
 
@@ -61,6 +68,7 @@ function nextQueueUi(patch: Partial<QueueUiState>): QueueUiState {
     currentFileName: null,
     queuedCount: patch.queuedCount ?? 0,
     indexingPdf: false,
+    indexingOcr: false,
   }
 }
 
@@ -94,6 +102,7 @@ export function useBackgroundIndexing(
   const queueReadyRef = useRef(false)
   const knownPathsRef = useRef(new Set<string>())
   const cancelGenerationRef = useRef(0)
+  const ocrQueueActiveRef = useRef(false)
   const settingsRef = useRef(settings)
   const fileItemsRef = useRef(fileItems)
   const indexFileRef = useRef(indexFile)
@@ -127,6 +136,18 @@ export function useBackgroundIndexing(
       if (generation !== cancelGenerationRef.current) return
       void processNextRef.current()
     }, 0)
+  }, [])
+
+  const maybeLogOcrQueueComplete = useCallback(() => {
+    if (!ocrQueueActiveRef.current) return
+    const ocrRemaining = countOcrCandidatesInQueue(
+      queueRef.current,
+      fileItemsRef.current,
+    )
+    if (ocrRemaining === 0) {
+      console.log('OCR queue complete')
+      ocrQueueActiveRef.current = false
+    }
   }, [])
 
   const enqueueCandidates = useCallback(() => {
@@ -184,6 +205,7 @@ export function useBackgroundIndexing(
 
     if (!nextPath) {
       applyQueueUi({ status: 'idle', queuedCount: 0 })
+      maybeLogOcrQueueComplete()
       return
     }
 
@@ -202,18 +224,45 @@ export function useBackgroundIndexing(
     }
 
     const isPdf = item.extension === 'pdf'
+    const isOcrImage = isOcrImageItem(item)
     const activeSettings = settingsRef.current
+
+    if (isOcrImage && !ocrQueueActiveRef.current) {
+      console.log('OCR queue started')
+      ocrQueueActiveRef.current = true
+    }
 
     inFlightRef.current = true
     applyQueueUi({
       currentFileName: item.fileName,
       queuedCount: remaining,
       indexingPdf: isPdf,
+      indexingOcr: isOcrImage,
     })
 
-    let outcome: BackgroundIndexOutcome = 'skipped'
     try {
-      if (isPdf) {
+      if (isOcrImage) {
+        const maxBytes = backgroundOcrMaxFileBytes(activeSettings)
+        if (item.fileSizeBytes > maxBytes) {
+          console.log(
+            'OCR skipped due to size:',
+            item.fileName,
+            `${item.fileSizeBytes} bytes (max ${maxBytes})`,
+          )
+          attemptedPathsRef.current.add(normalized)
+        } else {
+          console.log('OCR indexing image:', item.fileName)
+          const outcome = await indexFileRef.current(nextPath, {
+            background: true,
+          })
+          if (outcome === 'indexed') {
+            console.log('OCR complete:', item.fileName)
+          } else if (outcome === 'error') {
+            console.log('OCR failed:', item.fileName)
+          }
+          attemptedPathsRef.current.add(normalized)
+        }
+      } else if (isPdf) {
         const maxBytes = activeSettings.backgroundPdfMaxSizeMb * 1024 * 1024
         if (item.fileSizeBytes > maxBytes) {
           console.log(
@@ -221,13 +270,13 @@ export function useBackgroundIndexing(
             item.fileName,
             `${item.fileSizeBytes} bytes (max ${maxBytes})`,
           )
-          outcome = await indexFileRef.current(nextPath, {
+          await indexFileRef.current(nextPath, {
             background: true,
             skipWithError: `PDF exceeds maximum size (${activeSettings.backgroundPdfMaxSizeMb} MB)`,
           })
         } else {
           console.log('PDF indexing started:', item.fileName, nextPath)
-          outcome = await indexFileRef.current(nextPath, { background: true })
+          const outcome = await indexFileRef.current(nextPath, { background: true })
           if (outcome === 'indexed') {
             console.log('PDF indexing completed:', item.fileName)
           } else if (outcome === 'error') {
@@ -235,19 +284,23 @@ export function useBackgroundIndexing(
             console.log('Continuing queue after PDF failure')
           }
         }
+        attemptedPathsRef.current.add(normalized)
       } else {
-        outcome = await indexFileRef.current(nextPath, { background: true })
+        await indexFileRef.current(nextPath, { background: true })
+        attemptedPathsRef.current.add(normalized)
       }
 
       if (generation !== cancelGenerationRef.current) return
     } catch (err) {
       console.warn('[Remy] Background index failed, continuing queue', err)
-      if (isPdf) {
+      if (isOcrImage) {
+        console.log('OCR failed:', item.fileName, err)
+      } else if (isPdf) {
         console.log('PDF indexing failed:', item.fileName, err)
         console.log('Continuing queue after PDF failure')
       }
-    } finally {
       attemptedPathsRef.current.add(normalized)
+    } finally {
       inFlightRef.current = false
     }
 
@@ -258,11 +311,22 @@ export function useBackgroundIndexing(
       queuedCount: queueRef.current.length,
     })
 
+    maybeLogOcrQueueComplete()
+
     const delayMs = getPostJobDelayMs(item, activeSettings)
+    if (isOcrImage && delayMs > 0) {
+      const delaySec = Math.round(delayMs / 1000)
+      console.log(`OCR waiting ${delaySec} seconds before next image`)
+    }
     await new Promise((resolve) => window.setTimeout(resolve, delayMs))
     if (generation !== cancelGenerationRef.current) return
     void processNextRef.current()
-  }, [applyQueueUi, enqueueCandidates, scheduleProcessNext])
+  }, [
+    applyQueueUi,
+    enqueueCandidates,
+    maybeLogOcrQueueComplete,
+    scheduleProcessNext,
+  ])
 
   useEffect(() => {
     processNextRef.current = processNext
@@ -292,12 +356,14 @@ export function useBackgroundIndexing(
       queueRef.current = []
       attemptedPathsRef.current.clear()
       knownPathsRef.current = new Set()
+      ocrQueueActiveRef.current = false
       applyQueueUi({ status: 'disabled', queuedCount: 0 })
       return
     }
 
     attemptedPathsRef.current.clear()
     queueRef.current = []
+    ocrQueueActiveRef.current = false
     applyQueueUi({
       status: 'idle',
       currentFileName: null,
@@ -322,6 +388,9 @@ export function useBackgroundIndexing(
     settings.backgroundPdfIndexingEnabled,
     settings.backgroundPdfMaxSizeMb,
     settings.backgroundPdfDelaySec,
+    settings.ocrImageIndexingEnabled,
+    settings.backgroundOcrMaxSizeMb,
+    settings.backgroundOcrDelaySec,
     applyQueueUi,
     kickWorker,
   ])
@@ -361,5 +430,6 @@ export function useBackgroundIndexing(
     queuedCount: queueUi.queuedCount,
     indexedCount,
     indexingPdf: queueUi.indexingPdf,
+    indexingOcr: queueUi.indexingOcr,
   }
 }

@@ -1,4 +1,5 @@
 /** Which non-PDF file types background indexing processes (txt always included). */
+import { OCR_INDEXING_ENABLED } from '../lib/ocrFeature'
 import { dedupeFolderPaths } from '../lib/watchedFolders'
 
 export type BackgroundIndexScope = 'txt' | 'txt_docx'
@@ -18,6 +19,12 @@ export interface AppSettings {
   backgroundPdfMaxSizeMb: number
   /** Delay between consecutive background PDF jobs (seconds). */
   backgroundPdfDelaySec: number
+  /** Background OCR for PNG/JPG/JPEG/WEBP — off by default. */
+  ocrImageIndexingEnabled: boolean
+  /** Max image size for background OCR (MB). */
+  backgroundOcrMaxSizeMb: number
+  /** Delay between consecutive background OCR jobs (seconds). */
+  backgroundOcrDelaySec: number
   /** Absolute paths to user-added watch folders (persisted in SQLite). */
   customWatchedFolders: string[]
   /** When on, closing the window hides Remy instead of quitting. */
@@ -40,8 +47,22 @@ export const BACKGROUND_PDF_MAX_SIZE_MB = 50
 export const BACKGROUND_PDF_MIN_DELAY_SEC = 5
 export const BACKGROUND_PDF_MAX_DELAY_SEC = 120
 
+export const DEFAULT_BACKGROUND_OCR_MAX_SIZE_MB = 5
+export const DEFAULT_BACKGROUND_OCR_DELAY_SEC = 10
+export const BACKGROUND_OCR_MIN_SIZE_MB = 1
+export const BACKGROUND_OCR_MAX_SIZE_MB = 20
+export const BACKGROUND_OCR_MIN_DELAY_SEC = 5
+export const BACKGROUND_OCR_MAX_DELAY_SEC = 120
+
 /** Frontend invoke timeout — slightly above the Rust PDF worker timeout. */
 export const PDF_INDEX_TIMEOUT_MS = 65_000
+
+/** Frontend invoke timeout — slightly above the Rust OCR worker timeout. */
+export const OCR_INDEX_TIMEOUT_MS = 125_000
+
+export function backgroundOcrMaxFileBytes(settings: AppSettings): number {
+  return settings.backgroundOcrMaxSizeMb * 1024 * 1024
+}
 
 export const DEFAULT_SETTINGS: AppSettings = {
   scanDownloads: true,
@@ -55,6 +76,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backgroundPdfIndexingEnabled: false,
   backgroundPdfMaxSizeMb: DEFAULT_BACKGROUND_PDF_MAX_SIZE_MB,
   backgroundPdfDelaySec: DEFAULT_BACKGROUND_PDF_DELAY_SEC,
+  ocrImageIndexingEnabled: false,
+  backgroundOcrMaxSizeMb: DEFAULT_BACKGROUND_OCR_MAX_SIZE_MB,
+  backgroundOcrDelaySec: DEFAULT_BACKGROUND_OCR_DELAY_SEC,
   customWatchedFolders: [],
   runInBackgroundWhenClosed: true,
   launchAtLogin: false,
@@ -78,6 +102,9 @@ export const CLIPBOARD_POLL_MAX_MS = 60_000
 export function clampSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
+    ocrImageIndexingEnabled: OCR_INDEXING_ENABLED
+      ? settings.ocrImageIndexingEnabled
+      : false,
     customWatchedFolders: dedupeFolderPaths(settings.customWatchedFolders),
     filePollIntervalMs: Math.min(
       FILE_POLL_MAX_MS,
@@ -94,6 +121,14 @@ export function clampSettings(settings: AppSettings): AppSettings {
     backgroundPdfDelaySec: Math.min(
       BACKGROUND_PDF_MAX_DELAY_SEC,
       Math.max(BACKGROUND_PDF_MIN_DELAY_SEC, settings.backgroundPdfDelaySec),
+    ),
+    backgroundOcrMaxSizeMb: Math.min(
+      BACKGROUND_OCR_MAX_SIZE_MB,
+      Math.max(BACKGROUND_OCR_MIN_SIZE_MB, settings.backgroundOcrMaxSizeMb),
+    ),
+    backgroundOcrDelaySec: Math.min(
+      BACKGROUND_OCR_MAX_DELAY_SEC,
+      Math.max(BACKGROUND_OCR_MIN_DELAY_SEC, settings.backgroundOcrDelaySec),
     ),
   }
 }

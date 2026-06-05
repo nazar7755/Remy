@@ -6,14 +6,16 @@ import {
   filePathsMatch,
   normalizeFilePath,
 } from '../lib/filePaths'
+import { OCR_INDEXING_ENABLED } from '../lib/ocrFeature'
 import { isTauri } from '../lib/tauri'
 import { syncWatchedFolderScopes } from '../services/watchedFolders'
 import { parseExtension } from '../services/fileScanner/formatters'
 import { getClipboardEntries, pollClipboard } from '../services/clipboard'
 import {
-  canIndexFile,
+  canManuallyIndexFile,
   clearFileIndex as clearFileIndexInvoke,
   indexFileContent,
+  ocrIndexTimeoutMs,
   pdfIndexTimeoutMs,
 } from '../services/contentIndexer'
 import type { BackgroundIndexOutcome } from '../services/indexingQueue'
@@ -26,7 +28,7 @@ import { mergeScanResults } from '../services/fileScanner/mergeScanResults'
 import * as fileScannerService from '../services/fileScanner'
 import type { AppSettings } from '../types/settings'
 import type { FolderPaths, MemoryItem } from '../types/memoryItem'
-import { isClipboardItem } from '../types/memoryItem'
+import { isClipboardItem, isImageExtension } from '../types/memoryItem'
 
 export interface FileScannerState {
   items: MemoryItem[]
@@ -146,6 +148,7 @@ export function useFileScanner(
   const settingsRef = useRef(settings)
   const scanningRef = useRef(false)
   const indexingPathsRef = useRef(new Set<string>())
+  const ocrInFlightRef = useRef(false)
   const fileItemsRef = useRef(fileItems)
   const mergedItemsRef = useRef<MemoryItem[]>([])
 
@@ -211,6 +214,11 @@ export function useFileScanner(
         parseExtension(trimmedPath.split(/[/\\]/).pop() ?? trimmedPath)
 
       const isPdf = extension === 'pdf'
+      const isOcrImage = OCR_INDEXING_ENABLED && isImageExtension(extension)
+
+      if (isImageExtension(extension) && !OCR_INDEXING_ENABLED) {
+        return 'skipped'
+      }
 
       if (options?.skipWithError) {
         if (!isBackground) {
@@ -223,12 +231,19 @@ export function useFileScanner(
         return 'error'
       }
 
-      if (!canIndexFile(extension)) {
+      if (!canManuallyIndexFile(extension)) {
         if (!isBackground) {
           console.warn('[Remy] Index skipped: unsupported extension', {
             filePath: trimmedPath,
             extension,
           })
+        }
+        return 'skipped'
+      }
+
+      if (isOcrImage && ocrInFlightRef.current) {
+        if (!isBackground) {
+          setIndexNotice('Another image OCR is already in progress')
         }
         return 'skipped'
       }
@@ -251,11 +266,16 @@ export function useFileScanner(
 
       if (isPdf) {
         console.log('PDF indexing started:', target?.fileName ?? trimmedPath, trimmedPath)
+      } else if (isOcrImage && !isBackground) {
+        console.log('OCR indexing image:', target?.fileName ?? trimmedPath)
       } else if (!isBackground) {
         console.log('Indexing started for path:', trimmedPath)
       }
 
       indexingPathsRef.current.add(trimmedPath)
+      if (isOcrImage) {
+        ocrInFlightRef.current = true
+      }
 
       if (!isBackground) {
         setIndexNotice(null)
@@ -268,7 +288,11 @@ export function useFileScanner(
           target?.fileName ?? trimmedPath.split(/[/\\]/).pop() ?? trimmedPath,
           {
             force: options?.force,
-            timeoutMs: isPdf ? pdfIndexTimeoutMs() : undefined,
+            timeoutMs: isPdf
+              ? pdfIndexTimeoutMs()
+              : isOcrImage
+                ? ocrIndexTimeoutMs()
+                : undefined,
           },
         )
         let outcome: BackgroundIndexOutcome = 'indexed'
@@ -301,6 +325,12 @@ export function useFileScanner(
           } else {
             console.log('PDF indexing failed:', target?.fileName ?? trimmedPath)
           }
+        } else if (isOcrImage) {
+          if (outcome === 'indexed') {
+            console.log('OCR complete:', target?.fileName ?? trimmedPath)
+          } else if (outcome === 'error') {
+            console.log('OCR failed:', target?.fileName ?? trimmedPath)
+          }
         } else if (!isBackground) {
           console.log('Tauri indexing result:', {
             path: trimmedPath,
@@ -324,6 +354,9 @@ export function useFileScanner(
         return 'error'
       } finally {
         indexingPathsRef.current.delete(trimmedPath)
+        if (isOcrImage) {
+          ocrInFlightRef.current = false
+        }
       }
     },
     [],

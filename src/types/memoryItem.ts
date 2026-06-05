@@ -1,3 +1,5 @@
+import { OCR_INDEXING_ENABLED } from '../lib/ocrFeature'
+
 /** Extensions whose text is extracted and stored in memory for search. */
 export const INDEXABLE_EXTENSIONS = ['txt', 'pdf', 'docx'] as const
 
@@ -61,6 +63,14 @@ export function isIndexableExtension(
   ext: string,
 ): ext is IndexableExtension {
   return (INDEXABLE_EXTENSIONS as readonly string[]).includes(ext)
+}
+
+/** File types that may have cached extracted text (documents + OCR images when enabled). */
+export function isContentIndexableExtension(ext: string): boolean {
+  if (isImageExtension(ext)) {
+    return OCR_INDEXING_ENABLED
+  }
+  return isIndexableExtension(ext)
 }
 
 export function isClipboardItem(item: MemoryItem): boolean {

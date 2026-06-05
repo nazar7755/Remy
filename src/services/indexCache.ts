@@ -1,7 +1,7 @@
 import { normalizeFilePath } from '../lib/filePaths'
 import { indexMetadataFromContent } from '../lib/indexMetadata'
 import { isTauri, tauriInvoke } from '../lib/tauri'
-import { canIndexFile } from './contentIndexer'
+import { hasIndexableContentType } from './contentIndexer'
 import type { MemoryItem } from '../types/memoryItem'
 import { isClipboardItem } from '../types/memoryItem'
 
@@ -18,7 +18,7 @@ export function applyIndexCache(
   if (cacheByPath.size === 0) return items
 
   return items.map((item) => {
-    if (isClipboardItem(item) || !canIndexFile(item.extension)) {
+    if (isClipboardItem(item) || !hasIndexableContentType(item.extension)) {
       return item
     }
 
@@ -46,7 +46,7 @@ export async function lookupIndexCache(
   if (!isTauri()) return new Map()
 
   const paths = items
-    .filter((item) => !isClipboardItem(item) && canIndexFile(item.extension))
+    .filter((item) => !isClipboardItem(item) && hasIndexableContentType(item.extension))
     .map((item) => item.filePath)
 
   if (paths.length === 0) return new Map()

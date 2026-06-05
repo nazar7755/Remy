@@ -1,3 +1,4 @@
+use crate::ocr_engine;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -9,9 +10,11 @@ use zip::ZipArchive;
 const INDEXABLE: &[&str] = &["txt", "pdf", "docx"];
 const MAX_CONTENT_CHARS: usize = 200_000;
 const PDF_EXTRACT_TIMEOUT_SECS: u64 = 60;
+const OCR_EXTRACT_TIMEOUT_SECS: u64 = 120;
 
 pub fn is_indexable(extension: &str) -> bool {
     INDEXABLE.contains(&extension)
+        || (ocr_engine::OCR_INDEXING_ENABLED && ocr_engine::is_ocr_image(extension))
 }
 
 pub fn extract_text(path: &Path, extension: &str) -> Option<String> {
@@ -23,6 +26,9 @@ pub fn extract_text(path: &Path, extension: &str) -> Option<String> {
         "txt" => extract_txt(path),
         "pdf" => extract_pdf(path),
         "docx" => extract_docx(path),
+        ext if ocr_engine::OCR_INDEXING_ENABLED && ocr_engine::is_ocr_image(ext) => {
+            extract_ocr_image(path)
+        }
         _ => return None,
     };
 
@@ -53,6 +59,45 @@ fn truncate_chars(mut s: String, max: usize) -> String {
 
 fn extract_txt(path: &Path) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| e.to_string())
+}
+
+fn extract_ocr_image(path: &Path) -> Result<String, String> {
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    if meta.len() > ocr_engine::OCR_ABSOLUTE_MAX_FILE_BYTES {
+        return Err(format!(
+            "Image exceeds maximum size ({} MB)",
+            ocr_engine::OCR_ABSOLUTE_MAX_FILE_BYTES / (1024 * 1024)
+        ));
+    }
+
+    let path_buf = path.to_path_buf();
+    let (tx, rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        let result = catch_ocr_extract(&path_buf);
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(Duration::from_secs(OCR_EXTRACT_TIMEOUT_SECS)) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!(
+            "OCR extraction timed out after {OCR_EXTRACT_TIMEOUT_SECS} seconds"
+        )),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Err("OCR extraction thread exited unexpectedly".to_string())
+        }
+    }
+}
+
+fn catch_ocr_extract(path: &PathBuf) -> Result<String, String> {
+    let path_for_panic = path.clone();
+    match std::panic::catch_unwind(move || ocr_engine::extract_text_from_image(&path_for_panic)) {
+        Ok(Ok(text)) => Ok(text),
+        Ok(Err(err)) => Err(err),
+        Err(_) => Err(
+            "OCR extraction panicked (image may be corrupted or unsupported)".to_string(),
+        ),
+    }
 }
 
 fn extract_pdf(path: &Path) -> Result<String, String> {

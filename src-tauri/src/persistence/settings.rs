@@ -21,6 +21,12 @@ pub struct AppSettingsDto {
     pub background_pdf_max_size_mb: u32,
     #[serde(default = "default_background_pdf_delay_sec")]
     pub background_pdf_delay_sec: u32,
+    #[serde(default = "default_ocr_image_indexing_enabled")]
+    pub ocr_image_indexing_enabled: bool,
+    #[serde(default = "default_background_ocr_max_size_mb")]
+    pub background_ocr_max_size_mb: u32,
+    #[serde(default = "default_background_ocr_delay_sec")]
+    pub background_ocr_delay_sec: u32,
     #[serde(default = "default_custom_watched_folders")]
     pub custom_watched_folders: Vec<String>,
     #[serde(default = "default_run_in_background_when_closed")]
@@ -61,6 +67,18 @@ fn default_background_pdf_delay_sec() -> u32 {
     10
 }
 
+fn default_ocr_image_indexing_enabled() -> bool {
+    false
+}
+
+fn default_background_ocr_max_size_mb() -> u32 {
+    5
+}
+
+fn default_background_ocr_delay_sec() -> u32 {
+    10
+}
+
 impl Default for AppSettingsDto {
     fn default() -> Self {
         Self {
@@ -75,6 +93,9 @@ impl Default for AppSettingsDto {
             background_pdf_indexing_enabled: default_background_pdf_indexing_enabled(),
             background_pdf_max_size_mb: default_background_pdf_max_size_mb(),
             background_pdf_delay_sec: default_background_pdf_delay_sec(),
+            ocr_image_indexing_enabled: default_ocr_image_indexing_enabled(),
+            background_ocr_max_size_mb: default_background_ocr_max_size_mb(),
+            background_ocr_delay_sec: default_background_ocr_delay_sec(),
             custom_watched_folders: default_custom_watched_folders(),
             run_in_background_when_closed: default_run_in_background_when_closed(),
             launch_at_login: default_launch_at_login(),
@@ -88,6 +109,11 @@ impl AppSettingsDto {
         self.clipboard_poll_interval_ms = self.clipboard_poll_interval_ms.clamp(1000, 60_000);
         self.background_pdf_max_size_mb = self.background_pdf_max_size_mb.clamp(1, 50);
         self.background_pdf_delay_sec = self.background_pdf_delay_sec.clamp(5, 120);
+        self.background_ocr_max_size_mb = self.background_ocr_max_size_mb.clamp(1, 20);
+        self.background_ocr_delay_sec = self.background_ocr_delay_sec.clamp(5, 120);
+        if !crate::ocr_engine::OCR_INDEXING_ENABLED {
+            self.ocr_image_indexing_enabled = false;
+        }
         self.custom_watched_folders = dedupe_folder_paths(self.custom_watched_folders);
         self
     }

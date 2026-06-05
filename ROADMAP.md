@@ -55,6 +55,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [x] PDF background indexing safety — off by default; isolated Rust extraction with timeout/panic guard; configurable max size and inter-file delay; failures marked `error` without retry in session
 - [ ] Index `xlsx` / `csv` text where practical
 - [x] Image thumbnails in cards (png/jpg/jpeg/webp; lazy 64×64 via Tauri asset protocol + `convertFileSrc`)
+- [ ] **OCR image indexing (Phase 1)** — *postponed* — prototype shipped (`ocrs`, `file_index_cache` integration) but disabled (`OCR_INDEXING_ENABLED = false`) due to UI lag; needs safer worker/background process before re-enable
 - [ ] Fuzzy or ranked search (today: substring match in `contentSearch`)
 
 ---
@@ -80,6 +81,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [ ] Export memories (JSON/Markdown archive)
 - [ ] Exclude lists (paths, apps, sensitive patterns)
 - [x] First-launch welcome onboarding (one-time modal; Scan now / Add Folder)
+- [ ] OCR image indexing — re-enable after dedicated worker process (code retained, flag-gated)
 - [ ] macOS sandbox / permission onboarding flow
 - [ ] Windows & Linux parity testing and installers
 - [ ] Automated tests: Rust indexer unit tests, frontend mapper/search tests
@@ -114,4 +116,4 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 2. Update checkboxes when merging work (or strike through with PR link).
 3. If scope changes, edit **Principles** in `PROJECT_CONTEXT.md` first, then adjust phases here.
 
-**Current focus recommendation:** Phase 1.1 (Search dedicated view) — Quick Search overlay, global hotkey, onboarding, empty states, Settings, persistence, and custom watch folders are in place.
+**Current focus recommendation:** Phase 1.1 (Search dedicated view) — Quick Search overlay, global hotkey, onboarding, empty states, Settings, persistence, and custom watch folders are in place. OCR postponed until a dedicated worker exists.

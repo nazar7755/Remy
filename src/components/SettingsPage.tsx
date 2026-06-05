@@ -5,6 +5,7 @@ import {
   fetchPersistedStatistics,
   type GlobalHotkeyStatus,
 } from '../services/settings'
+import { OCR_INDEXING_ENABLED } from '../lib/ocrFeature'
 import { isTauri } from '../lib/tauri'
 import { countWatchedFolders } from '../lib/watchedFolders'
 import type { FileScannerState } from '../hooks/useFileScanner'
@@ -490,6 +491,12 @@ export function SettingsPage({
             onChange={(backgroundIndexScope) => patch({ backgroundIndexScope })}
           />
         </SettingsRow>
+        {!OCR_INDEXING_ENABLED && (
+          <p className="pb-4 text-xs text-remy-muted">
+            OCR image indexing is postponed — it will return in a safer background
+            worker later. Image thumbnails and document indexing are unchanged.
+          </p>
+        )}
         <SettingsRow
           label="Enable PDF background indexing"
           hint="Off by default — heavy PDFs are processed slowly with extra safety limits"

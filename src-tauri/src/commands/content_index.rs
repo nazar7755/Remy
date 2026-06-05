@@ -33,6 +33,15 @@ pub fn index_file_content(
     let meta = std::fs::metadata(file_path).map_err(|e| e.to_string())?;
     let (mtime_ms, file_size) = file_metadata_fields(&meta)?;
 
+    if crate::ocr_engine::is_ocr_image(&extension)
+        && file_size > crate::ocr_engine::OCR_ABSOLUTE_MAX_FILE_BYTES
+    {
+        return Err(format!(
+            "Image exceeds maximum size ({} MB)",
+            crate::ocr_engine::OCR_ABSOLUTE_MAX_FILE_BYTES / (1024 * 1024)
+        ));
+    }
+
     let content = content_indexer::extract_text(file_path, &extension);
     match content {
         Some(ref text) => {
