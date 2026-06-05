@@ -12,6 +12,7 @@ import {
   revealLabel,
 } from '../services/fileActions'
 import { FavoriteStarButton } from './FavoriteStarButton'
+import { MemoryTagsSection } from './MemoryTagsSection'
 import { canManuallyIndexFile } from '../services/contentIndexer'
 import { isClipboardItem, isImageFile, type MemoryItem } from '../types/memoryItem'
 
@@ -21,6 +22,9 @@ interface FileDetailsPanelProps {
   onIndexContent?: (filePath: string) => void
   onReindexContent?: (filePath: string) => void
   onToggleFavorite?: (item: MemoryItem) => void
+  allTagNames?: string[]
+  onAddTag?: (item: MemoryItem, rawTagName: string) => Promise<string | null>
+  onRemoveTag?: (item: MemoryItem, tagName: string) => Promise<void>
 }
 
 interface DetailRowProps {
@@ -135,6 +139,9 @@ export function FileDetailsPanel({
   onIndexContent,
   onReindexContent,
   onToggleFavorite,
+  allTagNames = [],
+  onAddTag,
+  onRemoveTag,
 }: FileDetailsPanelProps) {
   const [actionError, setActionError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -288,6 +295,15 @@ export function FileDetailsPanel({
           </div>
         </div>
       </div>
+
+      {onAddTag && onRemoveTag && (
+        <MemoryTagsSection
+          item={item}
+          allTagNames={allTagNames}
+          onAddTag={onAddTag}
+          onRemoveTag={onRemoveTag}
+        />
+      )}
 
       <dl className="max-h-[280px] divide-y divide-remy-border/60 overflow-y-auto px-4">
         {clipboard ? (

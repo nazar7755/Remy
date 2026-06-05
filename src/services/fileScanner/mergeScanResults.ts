@@ -24,6 +24,7 @@ export function mergeScanResults(
         indexedAt: existing.indexedAt,
         indexedAtIso: existing.indexedAtIso,
         isFavorite: existing.isFavorite,
+        tags: existing.tags,
       }
     }
 
@@ -36,6 +37,7 @@ export function mergeScanResults(
       indexedAt: existing.indexedAt,
       indexedAtIso: existing.indexedAtIso,
       isFavorite: existing.isFavorite,
+      tags: existing.tags,
     }
   })
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { folderDisplayName } from '../lib/watchedFolders'
+import { TagPill } from './TagPill'
 import {
   MEMORIES_SORT_OPTIONS,
   TIMELINE_DEFAULT_FOLDER_FILTERS,
@@ -35,10 +36,13 @@ interface TimelineToolbarProps {
   loading: boolean
   addingFolder?: boolean
   foldersDisabled?: boolean
+  tagFilter: string | 'All'
+  availableTags: string[]
   onFolderFilterChange: (filter: TimelineFolderFilter) => void
   onAddFolder: () => void
   onRemoveCustomFolder: (path: string) => void
   onTypeFilterChange: (filter: TimelineTypeFilter) => void
+  onTagFilterChange: (filter: string | 'All') => void
   onSortChange: (sort: MemoriesSortOption) => void
   onViewModeChange: (mode: MemoriesViewMode) => void
   onRefresh: () => void
@@ -53,10 +57,13 @@ export function TimelineToolbar({
   loading,
   addingFolder = false,
   foldersDisabled = false,
+  tagFilter,
+  availableTags,
   onFolderFilterChange,
   onAddFolder,
   onRemoveCustomFolder,
   onTypeFilterChange,
+  onTagFilterChange,
   onSortChange,
   onViewModeChange,
   onRefresh,
@@ -226,6 +233,32 @@ export function TimelineToolbar({
           </button>
         </div>
       </div>
+
+      {availableTags.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto overscroll-x-contain border-b border-remy-border/60 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <span className="shrink-0 text-[10px] font-medium tracking-wide text-remy-muted uppercase">
+            Tags
+          </span>
+          <button
+            type="button"
+            onClick={() => onTagFilterChange('All')}
+            className={`${pillBase} ${tagFilter === 'All' ? pillActive : pillInactive}`}
+          >
+            All
+          </button>
+          {availableTags.map((tagName) => (
+            <TagPill
+              key={tagName}
+              tagName={tagName}
+              size="sm"
+              active={tagFilter === tagName}
+              onClick={() =>
+                onTagFilterChange(tagFilter === tagName ? 'All' : tagName)
+              }
+            />
+          ))}
+        </div>
+      )}
 
       {folderMenu && (
         <div

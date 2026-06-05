@@ -38,6 +38,7 @@ export function clipboardEntryToMemoryItem(
     indexedAt: null,
     indexedAtIso: null,
     isFavorite: false,
+    tags: [],
   }
 }
 

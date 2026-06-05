@@ -104,6 +104,7 @@ export interface MemoryItem {
   indexedAt: string | null
   indexedAtIso: string | null
   isFavorite: boolean
+  tags: string[]
 }
 
 export interface FolderPaths {

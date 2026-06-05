@@ -32,7 +32,7 @@ Remy/
 │   ├── components/         # UI (Sidebar, timeline, Settings, cards, QuickSearchOverlay)
 │   ├── hooks/              # useFileScanner, useSettings, useWatchedFolders, useBackgroundIndexing
 │   ├── services/           # Tauri/mock adapters, clipboard, indexing, indexingQueue
-│   ├── lib/                # Search, formatting, Tauri detection, `imageSrc` (asset URLs)
+│   ├── lib/                # Search, formatting, Tauri detection, `quickSearchContext`, `quickSearchRecentActivity`
 │   └── types/              # MemoryItem, NavSection, etc.
 ├── src-tauri/
 │   ├── src/
@@ -89,12 +89,14 @@ flowchart LR
 - **`useFileScanner`**: Polls enabled default folders (Downloads, Desktop, Documents) plus user-added custom watch folders every 5s; polls clipboard every 2s when running in Tauri. Merges file + clipboard items into one timeline. After each file scan, asynchronously restores cached index text from disk (non-blocking UI). Exposes `indexFile` for manual and background indexing.
 - **`useBackgroundIndexing`**: After initial UI render (~2s), enqueues indexable files with `indexStatus === 'idle'` and processes them **one at a time** via `indexFile`. TXT/DOCX: 5s between jobs, max 10MB. **OCR image indexing is postponed** (`OCR_INDEXING_ENABLED = false` in `src/lib/ocrFeature.ts` and `ocr_engine.rs`) — no OCR on startup, scan, or background queue. **PDF is off by default** — separate Settings toggle with max size (default 5MB), delay (default 10s), 60s Rust extraction timeout, and panic isolation. Failed PDF jobs get `indexStatus === 'error'` and are not retried in the same session. Queue status shown in the sidebar and Settings.
 - **`FileScanner` + adapters**: `TauriFileSystemAdapter` (production) or `MockFileSystemAdapter` (Vite-only browser dev).
-- **`contentSearch`**: Client-side filter by name, path, extension, type, source, and indexed/plain text.
-- **`quickSearchRecentActivity`**: Builds empty-query Recent Activity sections for Quick Search (Recent Files, Recent Clipboard, Favorites); snapshotted at overlay open, not recomputed on keystroke.
+- **`contentSearch`**: Client-side filter by name, path, extension, type, source, indexed/plain text, and **`tag:`** filters (e.g. `tag:crypto`, `ethereum tag:crypto`).
+- **`quickSearchRecentActivity`**: Builds Recent Activity sections for Quick Search (Recent Files, Recent Clipboard, Favorites); refreshed on overlay open.
+- **`quickSearchContext`**: Context chips (**All**, **Recent**, **Clipboard**, **Favorites**, **Tags**) under the overlay search input; each mode scopes browse and search (`resolveQuickSearchRows`). **All** uses live union of files, clipboard, favorites, and tag pills (not a stale snapshot). **Recent** shows recent files + clipboard only. Esc hides overlay via window-level capture handler.
 - **Navigation**: `Timeline`, `Favorites`, `Indexed`, and `Settings` are implemented; `Search` is not built yet.
 - **Onboarding & empty states**: True first launch (no files, no clipboard entries in SQLite, no favorites, scan/favorites loaded) opens a one-time **modal** (`OnboardingModal`). Dismissal or action (Scan now / Add Folder) sets `localStorage` flag `remy.onboardingCompleted` — never shown again. Timeline stays search + toolbar + content only (no inline welcome card). Section empty states share an `EmptyState` component. Dev: **Preview empty states** (`remy.previewEmptyStates`) and **Reset onboarding** in Settings → Developer.
 - **Indexed page**: Filtered view of live items with `indexStatus === 'indexed'` and extracted text (txt/pdf/docx from all scan sources); no source filters.
 - **`useFavorites`**: Independent favorites collection in SQLite (`favorites` table: `memory_id` + JSON snapshot per pin); `useFileScanner` marks live items with `isFavorite`; Favorites page uses `resolveFavoriteItems()` to merge live scan data with saved snapshots — no duplicate rows.
+- **`useTags`**: Independent tag assignments in SQLite (`tags` + `memory_tags` tables); keyed by stable `MemoryItem.id` (file path or `clipboard://…`); `useFileScanner` attaches `tags[]` to live items via `applyTagsToItems`; survives rescans/reindexing because tags are stored separately from scan/index cache.
 - **Memories page**: Database-style browse of all items (list/grid, type filters, sort, search); preferences (view mode, sort) persist in `localStorage`. Timeline remains the chronological activity feed with source filters unchanged.
 - **`useSettings`**: Loads/saves app preferences (default folder toggles, custom watch folder paths, poll intervals, clipboard privacy, background indexing, launch at login, run in background when window closed) via SQLite in Tauri or `localStorage` in browser mock. Listens for `settings-changed` events from the tray menu to reload after tray toggles background indexing.
 
@@ -114,6 +116,8 @@ flowchart LR
 | `get_memory_statistics` | Clipboard count, indexed file count, total indexed characters (SQLite) |
 | `clear_file_index` | Remove one file’s cached index (per-file “Clear index”) |
 | `get_favorites` / `set_favorite` | Persist pinned memories (`memory_id` + metadata snapshot JSON) |
+| `get_memory_tag_assignments` / `add_memory_tag` / `remove_memory_tag` | Load and mutate tag assignments (separate from index cache) |
+| `get_tag_statistics` | Tag count and top 10 most-used tags |
 | `clear_clipboard_history` / `clear_indexed_content` | Privacy / recovery — clear clipboard history or all cached index text |
 | `get_global_hotkey_status` | Whether `Cmd + Shift + Space` registered successfully (for Settings warning) |
 | `hide_quick_search_overlay` | Hide the `quick-search` overlay window |
@@ -145,7 +149,7 @@ Background capture (file poll, clipboard poll, indexing queue) stays in the Reac
 
 | Store | Location | Contents |
 |-------|----------|----------|
-| **SQLite** (`rusqlite`, bundled) | `{data_local_dir}/com.remy.app/remy.sqlite` | `clipboard_entries`, `file_index_cache`, `favorites`, `app_settings` |
+| **SQLite** (`rusqlite`, bundled) | `{data_local_dir}/com.remy.app/remy.sqlite` | `clipboard_entries`, `file_index_cache`, `favorites`, `tags`, `memory_tags`, `app_settings` |
 
 - **Clipboard**: Saved after each successful poll; restored into `ClipboardMonitor` on startup (dedupe state seeded from newest entry).
 - **Index cache**: Keyed by `file_path`; validated with `file_mtime_ms` + `file_size` so changed files are re-indexed on demand.
@@ -171,6 +175,7 @@ Unified shape for files and clipboard snippets:
 - **Indexable for search**: `txt`, `pdf`, `docx` (images: thumbnails only; OCR postponed)
 - **Index metadata** (files): `indexedCharCount`, `indexedAt` — persisted in `file_index_cache.indexed_at_ms` with extracted text
 - **Favorites**: `isFavorite` on live items; persisted collection keyed by stable `MemoryItem.id` (file path or `clipboard://…`) with snapshot JSON for display when not in the current scan
+- **Tags**: `tags: string[]` on live items; persisted in `memory_tags` keyed by the same stable `memory_id`; normalized lowercase names (optional `#` prefix in UI); independent from favorites and index cache
 - **Image thumbnails**: `png`, `jpg`, `jpeg`, `webp` use `MemoryItem.filePath` via Tauri `convertFileSrc` (asset protocol); 64×64 lazy previews on Timeline, Memories, Favorites, and Indexed cards (browser dev shows type icons only)
 
 ### UI sections (`NavSection`)
@@ -189,17 +194,18 @@ Unified shape for files and clipboard snippets:
 - **`useWatchedFolders`**: Add/remove custom watch folders from Timeline (native folder picker in Tauri); persists via `useSettings`
 - **Memories**: type filter (All / Files / Clipboard / PDF / DOCX / TXT / Images), list or grid, six sort orders, detail panel on select
 - **Favorites** sidebar: dedicated page listing all pinned items from every source (no source filters); star toggle on Timeline/Memories cards and details panel
+- **File tags (Phase 1)**: custom tags on any memory item; details panel Tags section with pills, **+ Add Tag** (create or assign existing), remove per tag; Timeline optional tag filter row (All + top tags); search supports `tag:name` and combined queries (`ethereum tag:crypto`); Quick Search overlay uses the same `contentSearch` rules; Settings shows tag count and most-used tags
 - **Indexed** sidebar: dedicated page for files with cached extracted text (Downloads, Desktop, Documents); search, sort, index metadata on cards
 - Timeline search with highlighted snippets
 - Detail panel: Index Content / Reindex / Clear index for txt·pdf·docx; open / reveal / copy path (image OCR controls hidden while postponed)
 - **Background indexing**: off by default; optional queue for TXT/DOCX (configurable scope) and PDF; OCR not queued; session limits; queue status in sidebar and Settings
 - **Indexing recovery** (Settings → Background indexing): **Clear all indexed content** (SQLite + in-memory reset) and **Reset indexing queue** (stop pending jobs, keep indexed files)
-- Settings statistics: indexed file count and total indexed characters
+- Settings statistics: indexed file count, total indexed characters, **tag count**, and **most used tags**
 - **Background mode (Phase 1)**: closing the window hides Remy instead of quitting (setting on by default); one-time system notification on first hide; file/clipboard/indexing polling continues in the hidden webview
 - **Launch at login (macOS)**: optional setting (off by default); registers a Launch Agent login item via `tauri-plugin-autostart`; autostart passes `--background-launch` so the main window stays hidden (menu bar tray only)
 - **Menu bar tray (macOS)**: Remy icon in the menu bar when running; menu with Open Remy, Scan now, background indexing toggle, live stats (indexed files + clipboard entries), and Quit Remy
-- **Global hotkey (macOS/desktop)**: `Cmd + Shift + Space` opens a compact **Quick Search** overlay (760×440, always on top, frameless, dark theme) instead of the full Remy window; searches files, clipboard, and indexed content via `contentSearch.ts`; when the search box is empty, shows **Recent Activity** (Recent Files, Recent Clipboard, Favorites) snapshotted once at open; ↑↓ navigate, Enter open/copy, Esc close, Cmd+Enter open in full Remy. Falls back to main window + header search if the overlay is unavailable. Settings → Shortcuts displays the binding; warns if registration failed
-- **Quick Search Recent Activity** (empty query): three lightweight sections built by `quickSearchRecentActivity.ts` — **Recent Files** (up to 10, newest by file mtime/`createdAtIso`), **Recent Clipboard** (up to 5, newest capture time), **Favorites** (up to 5, SQLite order via `resolveFavoriteItems`). Snapshot taken after first scan + favorites load; refreshed on `focus-quick-search`; not recomputed on keystroke. Typing hides Recent Activity and shows normal search results; clearing the query restores the snapshot. Same keyboard actions as search results (Enter, Cmd+Enter, Esc)
+- **Global hotkey (macOS/desktop)**: `Cmd + Shift + Space` opens a compact **Quick Search** overlay (760×440, always on top, frameless, dark theme) instead of the full Remy window. **Context chips** under the search input: **All** (live union of files, clipboard, favorites, tags), **Recent** (recent files + clipboard), **Clipboard**, **Favorites**, **Tags** (tag picker + tagged items; supports `tag:name`). Search uses `contentSearch.ts` with context-scoped pools. ↑↓ navigate, Enter open/copy, **Esc hide overlay** (window-level, does not quit Remy), Cmd+Enter open in full Remy. Falls back to main window + header search if overlay unavailable. Settings → Shortcuts displays the binding; warns if registration failed
+- **Quick Search contexts** (`quickSearchContext.ts`): **All** empty query shows sectioned live browse (files, clipboard, favorites, tag pills) — never narrower than Clipboard. **Recent** empty query shows recent files + clipboard (no favorites section). **Clipboard** / **Favorites** / **Tags** scope browse and search to that source. Empty states distinguish “No memories yet” (truly empty) vs “No results found” (filters/search). Tag rows in All switch to Tags context on select
 - Mock timeline when running `npm run dev` without Tauri
 - **Settings** page: default folder scan toggles, poll intervals, clipboard privacy, shortcuts (read-only display), startup (launch at login + run in background when closed), background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status — custom folders are managed on **Timeline**. OCR settings removed from UI while postponed.
 
@@ -252,12 +258,27 @@ OCR code remains in the repo (`ocr_engine.rs`, `src/lib/ocrFeature.ts`) but is *
 1. **While hidden** — Close the main window (background mode on). Press **Cmd + Shift + Space**. The compact Quick Search overlay should appear centered on screen with the search input focused (main window stays hidden).
 2. **Menu bar only** — Quit and relaunch with `--background-launch` (or log in with launch-at-login). Press **Cmd + Shift + Space** — overlay opens without showing the main window first.
 3. **While overlay open** — Press **Cmd + Shift + Space** again — overlay stays open; search input receives focus and text is selected; Recent Activity refreshes.
-4. **Recent Activity (empty query)** — With files, clipboard entries, and/or favorites present, the overlay shows section headers **Recent Files**, **Recent Clipboard**, and **Favorites** (sections with no items are omitted). Use ↑↓ and **Enter** to open/copy like search results. Clearing the query restores Recent Activity.
-5. **Search & navigate** — Type a query; Recent Activity hides and search results appear; use ↑↓ to move, **Enter** to open a file or copy clipboard text, **Esc** to dismiss overlay.
-6. **Open in Remy** — Select a result and press **Cmd + Enter** — overlay closes, main window opens on Timeline with search prefilled.
-7. **Settings** — Settings → Shortcuts shows *Quick Search: Cmd + Shift + Space*. If another app owns the shortcut, an amber warning appears (app keeps running).
-8. **Fallback** — If the overlay window fails to show, the main Remy window opens with header search focused instead.
-9. **Conflict check** — If registration fails, verify no crash; tray, polling, and indexing still work.
+4. **Recent Activity (All, empty query)** — With files, clipboard entries, and/or favorites present, **All** shows section headers **Recent Files**, **Recent Clipboard**, and **Favorites** (plus tag pills when tags exist). **Recent** chip omits Favorites. Use ↑↓ and **Enter** to open/copy. Typing switches to search results for the active context.
+5. **Context chips** — Switch **All** / **Recent** / **Clipboard** / **Favorites** / **Tags** under the search input; each scopes results. **All** must show content whenever Clipboard does (same live data sources).
+6. **Esc** — Press **Esc** with input focused, after arrow navigation, or with a chip focused — overlay hides (app keeps running).
+7. **Search & navigate** — Type a query; use ↑↓, **Enter**, **Esc**, **Cmd+Enter** as before.
+8. **Open in Remy** — Select a result and press **Cmd + Enter** — overlay closes, main window opens on Timeline with search prefilled.
+9. **Settings** — Settings → Shortcuts shows *Quick Search: Cmd + Shift + Space*. If another app owns the shortcut, an amber warning appears (app keeps running).
+10. **Fallback** — If the overlay window fails to show, the main Remy window opens with header search focused instead.
+11. **Conflict check** — If registration fails, verify no crash; tray, polling, and indexing still work.
+
+### Testing file tags (Tauri or browser mock)
+
+1. **Add tags** — Select a file or clipboard item on Timeline; open Details → **+ Add Tag** → enter `crypto` or `#crypto`. Tag appears as a pill.
+2. **Assign existing** — On another item, **+ Add Tag** → pick a suggested tag or type an existing name.
+3. **Remove** — Click × on a tag pill in Details; item updates immediately.
+4. **Persistence** — Quit and relaunch (`npm run tauri:dev` or browser with localStorage mock). Tags remain on the same items.
+5. **Rescan / reindex** — Run **Rescan** or reindex a tagged file. Tags stay attached (stored by stable `memory_id`, not index cache).
+6. **Search** — Timeline search: `tag:crypto` filters to tagged items; `ethereum tag:crypto` combines text + tag filter.
+7. **Quick Search** — `Cmd + Shift + Space`, type `tag:important`; same filter behavior as main search.
+8. **Timeline filter** — When tags exist, a **Tags** row appears under Folders (All + top tags). Click `#crypto` to filter the feed.
+9. **Favorites independence** — Star an item with tags; remove tags — favorite status unchanged.
+10. **Settings** — Settings → Statistics shows **Tag count** and **Most used tags** list.
 
 ## Explicit non-goals (for now)
 

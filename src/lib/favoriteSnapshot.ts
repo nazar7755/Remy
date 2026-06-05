@@ -28,5 +28,6 @@ export function snapshotToMemoryItem(
     indexError: null,
     ...emptyIndexMetadata(),
     isFavorite,
+    tags: [],
   }
 }

@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   clearClipboardHistory,
-  fetchGlobalHotkeyStatus,
   fetchPersistedStatistics,
+  fetchGlobalHotkeyStatus,
   type GlobalHotkeyStatus,
 } from '../services/settings'
 import { OCR_INDEXING_ENABLED } from '../lib/ocrFeature'
 import { isTauri } from '../lib/tauri'
 import { countWatchedFolders } from '../lib/watchedFolders'
+import { sortedTagNames, tagUsageFromAssignments } from '../lib/tags'
 import type { FileScannerState } from '../hooks/useFileScanner'
 import type { BackgroundIndexingState } from '../hooks/useBackgroundIndexing'
 import type { usePreviewEmptyStates } from '../hooks/usePreviewEmptyStates'
+import type { TagsState } from '../hooks/useTags'
 import { resetOnboardingCompleted } from '../lib/onboardingStorage'
 import type { SettingsState } from '../hooks/useSettings'
 import { IndexingQueueStatus } from './IndexingQueueStatus'
@@ -27,12 +29,12 @@ import {
   type BackgroundIndexScope,
   type MemoryStatistics,
 } from '../types/settings'
-
 interface SettingsPageProps {
   settingsState: SettingsState
   memoryScan: FileScannerState
   indexingQueue: BackgroundIndexingState
   previewEmptyStates: ReturnType<typeof usePreviewEmptyStates>
+  tagsState: TagsState
 }
 
 function SettingsSection({
@@ -219,6 +221,7 @@ export function SettingsPage({
   memoryScan,
   indexingQueue,
   previewEmptyStates,
+  tagsState,
 }: SettingsPageProps) {
   const { settings, loading, saving, error, updateSettings } = settingsState
   const [stats, setStats] = useState<MemoryStatistics>({
@@ -230,6 +233,17 @@ export function SettingsPage({
   const [clearing, setClearing] = useState<'clipboard' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+
+  const tagStats = useMemo(() => {
+    const usage = tagUsageFromAssignments(tagsState.assignments)
+    return {
+      tagCount: usage.size,
+      mostUsed: sortedTagNames(usage)
+        .slice(0, 10)
+        .map((name) => ({ name, usageCount: usage.get(name) ?? 0 })),
+    }
+  }, [tagsState.assignments])
+
   const [hotkeyStatus, setHotkeyStatus] = useState<GlobalHotkeyStatus | null>(null)
 
   const refreshStats = useCallback(async () => {
@@ -591,7 +605,29 @@ export function SettingsPage({
             label="Indexed characters"
             value={stats.totalIndexedCharacters.toLocaleString()}
           />
+          <StatCard label="Tag count" value={tagStats.tagCount} />
         </div>
+        {tagStats.mostUsed.length > 0 && (
+          <div className="pb-4">
+            <p className="text-[11px] font-medium tracking-wide text-remy-muted uppercase">
+              Most used tags
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {tagStats.mostUsed.map((tag) => (
+                <span
+                  key={tag.name}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-remy-elevated px-2.5 py-1 text-xs text-remy-subtle ring-1 ring-inset ring-remy-border"
+                >
+                  #{tag.name}
+                  <span className="tabular-nums text-remy-muted">{tag.usageCount}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {tagsState.error && (
+          <p className="pb-4 text-xs text-red-300">{tagsState.error}</p>
+        )}
       </SettingsSection>
 
       {!isTauri() && (

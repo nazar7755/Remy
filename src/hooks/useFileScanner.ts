@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { applyFavoritesToItems } from '../lib/favorites'
+import { applyTagsToItems } from '../lib/tags'
 import { mergeTimelineItems } from '../lib/contentSearch'
 import {
   findFileItemByPath,
@@ -133,6 +134,7 @@ export function useFileScanner(
   enabled: boolean,
   settings: AppSettings,
   favoriteIds: Set<string> = new Set(),
+  memoryTags: Map<string, string[]> = new Map(),
 ): FileScannerState {
   const [fileItems, setFileItems] = useState<MemoryItem[]>([])
   const [clipboardItems, setClipboardItems] = useState<MemoryItem[]>([])
@@ -154,14 +156,11 @@ export function useFileScanner(
 
   const visibleClipboard = settings.clipboardEnabled ? clipboardItems : []
 
-  const items = useMemo(
-    () =>
-      applyFavoritesToItems(
-        mergeTimelineItems(fileItems, visibleClipboard),
-        favoriteIds,
-      ),
-    [fileItems, visibleClipboard, favoriteIds],
-  )
+  const items = useMemo(() => {
+    const merged = mergeTimelineItems(fileItems, visibleClipboard)
+    const withTags = applyTagsToItems(merged, memoryTags)
+    return applyFavoritesToItems(withTags, favoriteIds)
+  }, [fileItems, visibleClipboard, favoriteIds, memoryTags])
 
   const fileCount = fileItems.length
 

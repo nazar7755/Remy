@@ -26,6 +26,9 @@ interface FavoritesPageProps {
   onToggleFavorite: (item: MemoryItem) => void
   onIndexContent: (filePath: string) => void
   onReindexContent: (filePath: string) => void
+  allTagNames?: string[]
+  onAddTag?: (item: MemoryItem, rawTagName: string) => Promise<string | null>
+  onRemoveTag?: (item: MemoryItem, tagName: string) => Promise<void>
   previewEmpty?: boolean
 }
 
@@ -38,6 +41,9 @@ export function FavoritesPage({
   onToggleFavorite,
   onIndexContent,
   onReindexContent,
+  allTagNames = [],
+  onAddTag,
+  onRemoveTag,
   previewEmpty = false,
 }: FavoritesPageProps) {
   const [localQuery, setLocalQuery] = useState('')
@@ -208,6 +214,9 @@ export function FavoritesPage({
             onToggleFavorite={() => onToggleFavorite(selected)}
             onIndexContent={onIndexContent}
             onReindexContent={onReindexContent}
+            allTagNames={allTagNames}
+            onAddTag={onAddTag}
+            onRemoveTag={onRemoveTag}
           />
         )}
       </div>

@@ -9,6 +9,7 @@ import {
   itemMatchesTypeFilter,
 } from '../lib/memoriesFilters'
 import { sortMemoryItems } from '../lib/memoriesSort'
+import { itemHasTag } from '../lib/tags'
 import {
   loadMemoriesPreferences,
   saveMemoriesPreferences,
@@ -50,6 +51,10 @@ interface FileMemoryTimelineProps {
   onIndexContent: (filePath: string) => void
   onReindexContent: (filePath: string) => void
   onToggleFavorite: (item: MemoryItem) => void
+  availableTags?: string[]
+  allTagNames?: string[]
+  onAddTag?: (item: MemoryItem, rawTagName: string) => Promise<string | null>
+  onRemoveTag?: (item: MemoryItem, tagName: string) => Promise<void>
   previewEmpty?: boolean
 }
 
@@ -70,10 +75,15 @@ export function FileMemoryTimeline({
   onIndexContent,
   onReindexContent,
   onToggleFavorite,
+  availableTags = [],
+  allTagNames = [],
+  onAddTag,
+  onRemoveTag,
   previewEmpty = false,
 }: FileMemoryTimelineProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [folderFilter, setFolderFilter] = useState<TimelineFolderFilter>('All')
+  const [tagFilter, setTagFilter] = useState<string | 'All'>('All')
   const [typeFilter, setTypeFilter] = useState<TimelineTypeFilter>('All')
   const [viewMode, setViewMode] = useState<MemoriesViewMode>(() =>
     loadMemoriesPreferences().viewMode,
@@ -97,6 +107,7 @@ export function FileMemoryTimeline({
       (item) =>
         itemMatchesFolderFilter(item, folderFilter) &&
         itemMatchesTypeFilter(item, typeFilter) &&
+        (tagFilter === 'All' || itemHasTag(item, tagFilter)) &&
         itemMatchesQuery(item, q),
     )
     const withSnippets = filtered.map((item) => ({
@@ -114,7 +125,7 @@ export function FileMemoryTimeline({
       item,
       snippet: snippetById.get(item.id) ?? null,
     }))
-  }, [effectiveItems, folderFilter, typeFilter, q, sort])
+  }, [effectiveItems, folderFilter, typeFilter, tagFilter, q, sort])
 
   const selected = useMemo(() => {
     if (!selectedId) return null
@@ -124,7 +135,7 @@ export function FileMemoryTimeline({
 
   useEffect(() => {
     setSelectedId(null)
-  }, [query, folderFilter, typeFilter, sort, viewMode])
+  }, [query, folderFilter, typeFilter, tagFilter, sort, viewMode])
 
   const handleFolderFilterChange = (filter: TimelineFolderFilter) => {
     setFolderFilter(filter)
@@ -138,8 +149,8 @@ export function FileMemoryTimeline({
     }
   }
 
-  const hasActiveFilters =
-    q.length > 0 || folderFilter !== 'All' || typeFilter !== 'All'
+  const totalItemCount = effectiveItems.length
+  const hasFilteredResults = displayed.length > 0
 
   return (
     <section className="space-y-2">
@@ -152,10 +163,13 @@ export function FileMemoryTimeline({
         loading={loading}
         addingFolder={addingFolder}
         foldersDisabled={foldersDisabled}
+        tagFilter={tagFilter}
+        availableTags={availableTags}
         onFolderFilterChange={handleFolderFilterChange}
         onAddFolder={onAddFolder}
         onRemoveCustomFolder={(path) => void handleRemoveCustomFolder(path)}
         onTypeFilterChange={setTypeFilter}
+        onTagFilterChange={setTagFilter}
         onSortChange={setSort}
         onViewModeChange={setViewMode}
         onRefresh={onRefresh}
@@ -185,12 +199,10 @@ export function FileMemoryTimeline({
 
       <div className="flex items-start gap-5">
         <div className="min-w-0 flex-1">
-          {loading && effectiveItems.length === 0 ? (
+          {loading && totalItemCount === 0 ? (
             <p className="text-sm text-remy-muted">Scanning memory folders…</p>
-          ) : displayed.length === 0 ? (
-            hasActiveFilters ? (
-              <p className="text-sm text-remy-muted">No items match your filters.</p>
-            ) : (
+          ) : !hasFilteredResults ? (
+            totalItemCount === 0 ? (
               <EmptyState
                 title="No memories yet"
                 description="Add a folder or enable scanning to start building your memory."
@@ -212,6 +224,8 @@ export function FileMemoryTimeline({
                   {loading ? 'Scanning…' : 'Scan now'}
                 </button>
               </EmptyState>
+            ) : (
+              <p className="text-sm text-remy-muted">No results found</p>
             )
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -249,12 +263,13 @@ export function FileMemoryTimeline({
             </div>
           )}
 
-          {displayed.length > 0 && (
+          {hasFilteredResults && (
             <p className="mt-6 text-xs text-remy-muted">
-              {displayed.length} of {effectiveItems.length} item
-              {effectiveItems.length === 1 ? '' : 's'}
+              {displayed.length} of {totalItemCount} item
+              {totalItemCount === 1 ? '' : 's'}
               {typeFilter !== 'All' ? ` · ${typeFilter}` : ''}
               {folderFilter !== 'All' ? ` · ${folderFilter}` : ''}
+              {tagFilter !== 'All' ? ` · #${tagFilter}` : ''}
             </p>
           )}
         </div>
@@ -266,6 +281,9 @@ export function FileMemoryTimeline({
             onToggleFavorite={() => onToggleFavorite(selected)}
             onIndexContent={onIndexContent}
             onReindexContent={onReindexContent}
+            allTagNames={allTagNames}
+            onAddTag={onAddTag}
+            onRemoveTag={onRemoveTag}
           />
         )}
       </div>

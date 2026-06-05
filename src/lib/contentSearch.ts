@@ -1,5 +1,31 @@
 import type { MemoryItem, SourceFilter } from '../types/memoryItem'
 import { isClipboardItem } from '../types/memoryItem'
+import { itemHasAllTags } from './tags'
+import { normalizeTagName } from './tagNormalize'
+
+export interface ParsedSearchQuery {
+  tags: string[]
+  text: string
+}
+
+/** Split `tag:crypto ethereum` into tag filters and free-text tokens. */
+export function parseSearchQuery(query: string): ParsedSearchQuery {
+  const tags: string[] = []
+  let text = query
+
+  for (const match of query.matchAll(/\btag:([^\s]+)/gi)) {
+    const normalized = normalizeTagName(match[1])
+    if (normalized && !tags.includes(normalized)) {
+      tags.push(normalized)
+    }
+    text = text.replace(match[0], ' ')
+  }
+
+  return {
+    tags,
+    text: text.replace(/\s+/g, ' ').trim(),
+  }
+}
 
 export function isIndexedFile(item: MemoryItem): boolean {
   return (
@@ -20,14 +46,28 @@ export function escapeRegExp(value: string): string {
 }
 
 export function itemMatchesQuery(item: MemoryItem, query: string): boolean {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
+  const trimmed = query.trim()
+  if (!trimmed) return true
+
+  const { tags, text } = parseSearchQuery(trimmed)
+
+  if (tags.length > 0 && !itemHasAllTags(item, tags)) {
+    return false
+  }
+
+  if (!text) {
+    return true
+  }
+
+  const q = text.toLowerCase()
 
   if (item.fileName.toLowerCase().includes(q)) return true
   if (item.filePath.toLowerCase().includes(q)) return true
   if (item.extension.toLowerCase().includes(q)) return true
   if (item.type.toLowerCase().includes(q)) return true
   if (item.source.toLowerCase().includes(q)) return true
+
+  if ((item.tags ?? []).some((tag) => tag.includes(q))) return true
 
   if (isClipboardItem(item) && item.content?.toLowerCase().includes(q)) {
     return true
@@ -75,16 +115,17 @@ export function resolveSnippet(
   item: MemoryItem,
   query: string,
 ): string | null {
-  if (!query.trim()) return null
+  const { text } = parseSearchQuery(query)
+  if (!text) return null
 
   if (isClipboardItem(item) && item.content) {
-    return buildContentSnippet(item.content, query)
+    return buildContentSnippet(item.content, text)
   }
 
   if (item.indexStatus !== 'indexed' || !item.content) {
     return null
   }
-  return buildContentSnippet(item.content, query)
+  return buildContentSnippet(item.content, text)
 }
 
 export function searchMemoryItems(
@@ -92,20 +133,22 @@ export function searchMemoryItems(
   query: string,
   sourceFilter: SourceFilter,
 ): MemorySearchResult[] {
-  const q = query.trim()
+  const trimmed = query.trim()
+  const { text } = parseSearchQuery(trimmed)
 
   const filtered = items.filter(
     (item) =>
-      itemMatchesSourceFilter(item, sourceFilter) && itemMatchesQuery(item, q),
+      itemMatchesSourceFilter(item, sourceFilter) &&
+      itemMatchesQuery(item, trimmed),
   )
 
-  if (!q) {
+  if (!text) {
     return filtered.map((item) => ({ item, snippet: null }))
   }
 
   return filtered.map((item) => ({
     item,
-    snippet: resolveSnippet(item, q),
+    snippet: resolveSnippet(item, trimmed),
   }))
 }
 

@@ -52,6 +52,28 @@ pub struct FavoriteDto {
     pub snapshot: FavoriteSnapshotDto,
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryTagAssignmentDto {
+    pub memory_id: String,
+    pub tag_name: String,
+    pub tagged_at_ms: u64,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct TagUsageDto {
+    pub name: String,
+    pub usage_count: u64,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct TagStatisticsDto {
+    pub tag_count: u64,
+    pub most_used: Vec<TagUsageDto>,
+}
+
 impl RemyStore {
     pub fn open() -> Result<Self, String> {
         let path = Self::database_path()?;
@@ -92,6 +114,25 @@ impl RemyStore {
                 favorited_at_ms INTEGER NOT NULL,
                 snapshot_json TEXT NOT NULL DEFAULT '{}'
             );
+
+            CREATE TABLE IF NOT EXISTS tags (
+                name TEXT PRIMARY KEY NOT NULL,
+                created_at_ms INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS memory_tags (
+                memory_id TEXT NOT NULL,
+                tag_name TEXT NOT NULL,
+                tagged_at_ms INTEGER NOT NULL,
+                PRIMARY KEY (memory_id, tag_name),
+                FOREIGN KEY (tag_name) REFERENCES tags(name) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_memory_tags_memory_id
+                ON memory_tags (memory_id);
+
+            CREATE INDEX IF NOT EXISTS idx_memory_tags_tag_name
+                ON memory_tags (tag_name);
             ",
         )
         .map_err(|e| e.to_string())?;
@@ -229,6 +270,144 @@ impl RemyStore {
             });
         }
         Ok(out)
+    }
+
+    pub fn normalize_tag_name(raw: &str) -> Option<String> {
+        let trimmed = raw.trim();
+        let without_hash = trimmed.strip_prefix('#').unwrap_or(trimmed).trim();
+        if without_hash.is_empty() || without_hash.len() > 64 {
+            return None;
+        }
+        let normalized = without_hash.to_ascii_lowercase();
+        if normalized
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            Some(normalized)
+        } else {
+            None
+        }
+    }
+
+    pub fn load_memory_tag_assignments(&self) -> Result<Vec<MemoryTagAssignmentDto>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT memory_id, tag_name, tagged_at_ms
+                 FROM memory_tags
+                 ORDER BY tagged_at_ms DESC",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            let (memory_id, tag_name, tagged_at_ms) = row.map_err(|e| e.to_string())?;
+            out.push(MemoryTagAssignmentDto {
+                memory_id,
+                tag_name,
+                tagged_at_ms: tagged_at_ms.max(0) as u64,
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn add_memory_tag(&self, memory_id: &str, raw_tag_name: &str) -> Result<(), String> {
+        let tag_name = Self::normalize_tag_name(raw_tag_name)
+            .ok_or_else(|| "Invalid tag name".to_string())?;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO tags (name, created_at_ms) VALUES (?1, ?2)
+             ON CONFLICT(name) DO NOTHING",
+            params![tag_name, now as i64],
+        )
+        .map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO memory_tags (memory_id, tag_name, tagged_at_ms)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(memory_id, tag_name) DO NOTHING",
+            params![memory_id, tag_name, now as i64],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn remove_memory_tag(&self, memory_id: &str, raw_tag_name: &str) -> Result<(), String> {
+        let tag_name = Self::normalize_tag_name(raw_tag_name)
+            .ok_or_else(|| "Invalid tag name".to_string())?;
+
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM memory_tags WHERE memory_id = ?1 AND tag_name = ?2",
+            params![memory_id, tag_name],
+        )
+        .map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "DELETE FROM tags
+             WHERE name = ?1
+             AND NOT EXISTS (
+                 SELECT 1 FROM memory_tags WHERE tag_name = tags.name
+             )",
+            params![tag_name],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn tag_statistics(&self) -> Result<TagStatisticsDto, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let tag_count: u64 = conn
+            .query_row("SELECT COUNT(*) FROM tags", [], |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT t.name, COUNT(mt.memory_id) AS usage_count
+                 FROM tags t
+                 LEFT JOIN memory_tags mt ON mt.tag_name = t.name
+                 GROUP BY t.name
+                 ORDER BY usage_count DESC, t.name ASC
+                 LIMIT 10",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut most_used = Vec::new();
+        for row in rows {
+            let (name, usage_count) = row.map_err(|e| e.to_string())?;
+            most_used.push(TagUsageDto {
+                name,
+                usage_count: usage_count.max(0) as u64,
+            });
+        }
+
+        Ok(TagStatisticsDto {
+            tag_count,
+            most_used,
+        })
     }
 
     pub fn set_favorite(

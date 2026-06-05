@@ -11,6 +11,7 @@ import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { useBackgroundIndexing } from './hooks/useBackgroundIndexing'
 import { useFavorites } from './hooks/useFavorites'
+import { useTags } from './hooks/useTags'
 import { useFileScanner } from './hooks/useFileScanner'
 import { useOnboarding } from './hooks/useOnboarding'
 import { usePreviewEmptyStates } from './hooks/usePreviewEmptyStates'
@@ -26,7 +27,7 @@ const SECTION_META: Record<
   Timeline: {
     title: 'Remy',
     subtitle: 'Browse and search everything Remy remembers',
-    searchPlaceholder: 'Search by name, path, extension, source, or text…',
+    searchPlaceholder: 'Search by name, path, tag:crypto, or text…',
   },
   Favorites: {
     title: 'Favorites',
@@ -54,6 +55,7 @@ function App() {
   const settingsState = useSettings()
   const previewEmptyStates = usePreviewEmptyStates()
   const favorites = useFavorites()
+  const tags = useTags()
   const scannerEnabled =
     isTauri() ||
     activeSection === 'Timeline' ||
@@ -64,6 +66,7 @@ function App() {
     scannerEnabled,
     settingsState.settings,
     favorites.favoriteIds,
+    tags.memoryTags,
   )
 
   const indexingQueue = useBackgroundIndexing(
@@ -127,8 +130,9 @@ function App() {
       resolveFavoriteItems(
         safeItems,
         favorites.records ?? [],
+        tags.memoryTags,
       ),
-    [safeItems, favorites.records],
+    [safeItems, favorites.records, tags.memoryTags],
   )
 
   const indexedItems = useMemo(
@@ -169,7 +173,7 @@ function App() {
             ref={globalSearchRef}
             value={globalQuery}
             onChange={setGlobalQuery}
-            placeholder="Search across all memories…"
+            placeholder="Search across all memories… (try tag:crypto)"
             size="sm"
             className="max-w-md flex-1"
           />
@@ -215,6 +219,10 @@ function App() {
                     void memoryScan.indexFile(path, { force: true })
                   }
                   onToggleFavorite={(item) => void favorites.toggleFavorite(item)}
+                  availableTags={tags.allTagNames.slice(0, 12)}
+                  allTagNames={tags.allTagNames}
+                  onAddTag={tags.addTag}
+                  onRemoveTag={tags.removeTag}
                 />
               </>
             )}
@@ -228,6 +236,9 @@ function App() {
                 query={globalQuery}
                 previewEmpty={previewEmpty}
                 onToggleFavorite={(item) => void favorites.toggleFavorite(item)}
+                allTagNames={tags.allTagNames}
+                onAddTag={tags.addTag}
+                onRemoveTag={tags.removeTag}
                 onIndexContent={(path) => void memoryScan.indexFile(path)}
                 onReindexContent={(path) =>
                   void memoryScan.indexFile(path, { force: true })
@@ -243,6 +254,9 @@ function App() {
                 query={globalQuery}
                 previewEmpty={previewEmpty}
                 onToggleFavorite={(item) => void favorites.toggleFavorite(item)}
+                allTagNames={tags.allTagNames}
+                onAddTag={tags.addTag}
+                onRemoveTag={tags.removeTag}
                 onIndexContent={(path) => void memoryScan.indexFile(path)}
                 onReindexContent={(path) =>
                   void memoryScan.indexFile(path, { force: true })
@@ -256,6 +270,7 @@ function App() {
                 memoryScan={memoryScan}
                 indexingQueue={indexingQueue}
                 previewEmptyStates={previewEmptyStates}
+                tagsState={tags}
               />
             )}
           </div>

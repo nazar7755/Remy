@@ -42,5 +42,6 @@ export function toMemoryItem(entry: ScannedFileEntry): MemoryItem | null {
     indexedAt: null,
     indexedAtIso: null,
     isFavorite: false,
+    tags: [],
   }
 }
