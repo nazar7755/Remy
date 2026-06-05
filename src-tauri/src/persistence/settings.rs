@@ -21,6 +21,12 @@ pub struct AppSettingsDto {
     pub background_pdf_max_size_mb: u32,
     #[serde(default = "default_background_pdf_delay_sec")]
     pub background_pdf_delay_sec: u32,
+    #[serde(default = "default_custom_watched_folders")]
+    pub custom_watched_folders: Vec<String>,
+}
+
+fn default_custom_watched_folders() -> Vec<String> {
+    Vec::new()
 }
 
 fn default_background_indexing_enabled() -> bool {
@@ -57,6 +63,7 @@ impl Default for AppSettingsDto {
             background_pdf_indexing_enabled: default_background_pdf_indexing_enabled(),
             background_pdf_max_size_mb: default_background_pdf_max_size_mb(),
             background_pdf_delay_sec: default_background_pdf_delay_sec(),
+            custom_watched_folders: default_custom_watched_folders(),
         }
     }
 }
@@ -67,6 +74,20 @@ impl AppSettingsDto {
         self.clipboard_poll_interval_ms = self.clipboard_poll_interval_ms.clamp(1000, 60_000);
         self.background_pdf_max_size_mb = self.background_pdf_max_size_mb.clamp(1, 50);
         self.background_pdf_delay_sec = self.background_pdf_delay_sec.clamp(5, 120);
+        self.custom_watched_folders = dedupe_folder_paths(self.custom_watched_folders);
         self
     }
+}
+
+fn dedupe_folder_paths(paths: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for path in paths {
+        let trimmed = path.trim().trim_end_matches(['/', '\\']).to_string();
+        if trimmed.is_empty() || !seen.insert(trimmed.clone()) {
+            continue;
+        }
+        out.push(trimmed);
+    }
+    out
 }

@@ -1,6 +1,7 @@
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+use tauri::Manager;
 
 /// Extensions the frontend FileScanner accepts.
 const SUPPORTED: &[&str] = &[
@@ -30,6 +31,13 @@ fn system_time_to_ms(time: SystemTime) -> u64 {
     time.duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+fn folder_display_name(dir: &Path) -> String {
+    dir.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Folder")
+        .to_string()
 }
 
 fn scan_directory(dir: PathBuf, source_folder: &str) -> Result<Vec<ScannedFileDto>, String> {
@@ -119,6 +127,7 @@ pub fn scan_all_memory_folders(
     scan_downloads: bool,
     scan_desktop: bool,
     scan_documents: bool,
+    custom_watched_folders: Vec<String>,
 ) -> Result<Vec<ScannedFileDto>, String> {
     let mut all = Vec::new();
 
@@ -138,6 +147,34 @@ pub fn scan_all_memory_folders(
         }
     }
 
+    for path_str in custom_watched_folders {
+        let dir = PathBuf::from(path_str.trim());
+        if !dir.is_dir() {
+            continue;
+        }
+        let source = folder_display_name(&dir);
+        all.extend(scan_directory(dir, &source)?);
+    }
+
     all.sort_by(|a, b| b.created_at_ms.cmp(&a.created_at_ms));
     Ok(all)
+}
+
+#[tauri::command]
+pub fn register_watched_folder_scopes(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let scope = app.asset_protocol_scope();
+
+    for path_str in paths {
+        let dir = PathBuf::from(path_str.trim());
+        if dir.is_dir() {
+            scope
+                .allow_directory(&dir, true)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
 }

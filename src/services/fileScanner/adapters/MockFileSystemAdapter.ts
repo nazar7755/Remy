@@ -1,4 +1,5 @@
 import type { MemorySource, SupportedExtension } from '../../../types/memoryItem'
+import { folderDisplayName } from '../../../lib/watchedFolders'
 import type {
   FileSystemAdapter,
   FolderPathsDto,
@@ -90,15 +91,28 @@ export class MockFileSystemAdapter implements FileSystemAdapter {
     if (sources.scanDesktop) enabled.add('Desktop')
     if (sources.scanDocuments) enabled.add('Documents')
 
-    return MOCK_FILES.filter((file) => enabled.has(file.source))
+    const results = MOCK_FILES.filter((file) => enabled.has(file.source))
       .map((file) => ({
-      name: file.name,
-      extension: file.extension,
-      createdAtMs: createdAtMs(file.daysAgo),
-      sizeBytes: file.sizeBytes,
-      path: `${mockBasePath(file.source)}/${file.name}`,
-      source: file.source,
-    }))
-      .sort((a, b) => b.createdAtMs - a.createdAtMs)
+        name: file.name,
+        extension: file.extension,
+        createdAtMs: createdAtMs(file.daysAgo),
+        sizeBytes: file.sizeBytes,
+        path: `${mockBasePath(file.source)}/${file.name}`,
+        source: file.source,
+      }))
+
+    for (const folderPath of sources.customWatchedFolders) {
+      const source = folderDisplayName(folderPath) as MemorySource
+      results.push({
+        name: 'notes.txt',
+        extension: 'txt' as SupportedExtension,
+        createdAtMs: createdAtMs(1),
+        sizeBytes: 512,
+        path: `${folderPath.replace(/[/\\]+$/, '')}/notes.txt`,
+        source,
+      })
+    }
+
+    return results.sort((a, b) => b.createdAtMs - a.createdAtMs)
   }
 }

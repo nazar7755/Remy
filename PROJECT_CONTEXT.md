@@ -21,7 +21,7 @@ Tagline (in-app): *Your second memory — files and clipboard.*
 |-------|--------|
 | **UI** | React 19, TypeScript, Tailwind CSS 4, Vite 8 |
 | **Shell** | Tauri 2 (Rust) — `src-tauri/` |
-| **Plugins** | `tauri-plugin-fs`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager` |
+| **Plugins** | `tauri-plugin-fs`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager`, `tauri-plugin-dialog` |
 | **Rust deps** | `pdf-extract`, `zip` + `quick-xml` (DOCX), `arboard` (clipboard polling) |
 
 ## Repository layout
@@ -30,7 +30,7 @@ Tagline (in-app): *Your second memory — files and clipboard.*
 Remy/
 ├── src/                    # React frontend
 │   ├── components/         # UI (Sidebar, timeline, Settings, cards, search)
-│   ├── hooks/              # useFileScanner, useSettings, useBackgroundIndexing
+│   ├── hooks/              # useFileScanner, useSettings, useWatchedFolders, useBackgroundIndexing
 │   ├── services/           # Tauri/mock adapters, clipboard, indexing, indexingQueue
 │   ├── lib/                # Search, formatting, Tauri detection, `imageSrc` (asset URLs)
 │   └── types/              # MemoryItem, NavSection, etc.
@@ -80,7 +80,7 @@ flowchart LR
 
 ### Frontend
 
-- **`useFileScanner`**: Polls Downloads, Desktop, and Documents every 5s; polls clipboard every 2s when running in Tauri. Merges file + clipboard items into one timeline. After each file scan, asynchronously restores cached index text from disk (non-blocking UI). Exposes `indexFile` for manual and background indexing.
+- **`useFileScanner`**: Polls enabled default folders (Downloads, Desktop, Documents) plus user-added custom watch folders every 5s; polls clipboard every 2s when running in Tauri. Merges file + clipboard items into one timeline. After each file scan, asynchronously restores cached index text from disk (non-blocking UI). Exposes `indexFile` for manual and background indexing.
 - **`useBackgroundIndexing`**: After initial UI render (~2s), enqueues indexable files with `indexStatus === 'idle'` and processes them **one at a time** via `indexFile`. TXT/DOCX: 5s between jobs, max 10MB. **PDF is off by default** — separate Settings toggle with max size (default 5MB), delay (default 10s), 60s Rust extraction timeout, and panic isolation. Failed PDFs get `indexStatus === 'error'` and are not retried in the same session. Queue status shown in the sidebar and Settings.
 - **`FileScanner` + adapters**: `TauriFileSystemAdapter` (production) or `MockFileSystemAdapter` (Vite-only browser dev).
 - **`contentSearch`**: Client-side filter by name, path, extension, type, source, and indexed/plain text.
@@ -88,26 +88,25 @@ flowchart LR
 - **Indexed page**: Filtered view of live items with `indexStatus === 'indexed'` and extracted text (txt/pdf/docx from all scan sources); no source filters.
 - **`useFavorites`**: Independent favorites collection in SQLite (`favorites` table: `memory_id` + JSON snapshot per pin); `useFileScanner` marks live items with `isFavorite`; Favorites page uses `resolveFavoriteItems()` to merge live scan data with saved snapshots — no duplicate rows.
 - **Memories page**: Database-style browse of all items (list/grid, type filters, sort, search); preferences (view mode, sort) persist in `localStorage`. Timeline remains the chronological activity feed with source filters unchanged.
-- **`useSettings`**: Loads/saves app preferences (folder toggles, poll intervals, clipboard privacy, background indexing) via SQLite in Tauri or `localStorage` in browser mock.
+- **`useSettings`**: Loads/saves app preferences (default folder toggles, custom watch folder paths, poll intervals, clipboard privacy, background indexing) via SQLite in Tauri or `localStorage` in browser mock.
 
 ### Backend (Rust)
 
 | Command | Role |
 |---------|------|
 | `get_allowed_paths` | Resolve Downloads / Desktop / Documents via `dirs` |
-| `scan_all_memory_folders` | List supported files in those directories |
+| `scan_all_memory_folders` | List supported files in enabled default folders plus `custom_watched_folders` from settings |
+| `register_watched_folder_scopes` | Extend asset-protocol scope for thumbnails in watched folders |
+| `open_file_path` / `reveal_file_path` | OS open/reveal for any watched path (including custom folders) |
 | `index_file_content` | Extract text from `.txt`, `.pdf`, `.docx` (max ~200k chars). PDF runs in a isolated thread with **60s timeout** and **`catch_unwind`** so a bad PDF cannot crash the app. |
 | `poll_clipboard` / `get_clipboard_entries` | Track text clipboard (dedupe window 30s, max 500 entries); persisted to SQLite |
-| `index_file_content` | Extract text; reads/writes `file_index_cache` (invalidates on mtime/size change) |
 | `lookup_file_index_cache` | Batch restore cached index text for scanned paths (startup hydration) |
 | `hydrate_clipboard_history` | Reload clipboard rows from disk into memory (optional; also runs at app setup) |
-| `get_app_settings` / `save_app_settings` | Read/write user preferences (JSON in `app_settings`) |
+| `get_app_settings` / `save_app_settings` | Read/write user preferences (JSON in `app_settings`, includes `custom_watched_folders`) |
 | `get_memory_statistics` | Clipboard count, indexed file count, total indexed characters (SQLite) |
 | `clear_file_index` | Remove one file’s cached index (per-file “Clear index”) |
-| `index_file_content` | Optional `force` skips cache for reindex |
 | `get_favorites` / `set_favorite` | Persist pinned memories (`memory_id` + metadata snapshot JSON) |
 | `clear_clipboard_history` / `clear_indexed_content` | Privacy / recovery — clear clipboard history or all cached index text |
-| `scan_all_memory_folders` | Accepts per-folder enable flags from settings |
 
 ### Local persistence (Phase 1.2)
 
@@ -124,7 +123,7 @@ flowchart LR
   - **Indexed page filter**: `resolveIndexedItems(items)` → `isIndexedFile(item)` requires `indexStatus === 'indexed'` **and** non-empty `content`. Same `items` array powers Timeline/Memories search via `contentSearch.ts`.
   - **Failed indexing**: `indexStatus === 'error'` with `indexError` message on the memory item (UI label: Failed). Background queue skips non-`idle` files; attempted paths are remembered for the session so failures are not retried automatically.
 - **Local-first only** — no network, no cloud APIs.
-- **Settings**: Single row `app_settings` key `app_settings` stores JSON (`scan_*`, poll intervals, `clipboard_enabled`, `background_indexing_enabled`, `background_index_scope`, `background_pdf_indexing_enabled`, `background_pdf_max_size_mb`, `background_pdf_delay_sec`). Defaults seeded on first DB open.
+- **Settings**: Single row `app_settings` key `app_settings` stores JSON (`scan_*`, `custom_watched_folders`, poll intervals, `clipboard_enabled`, `background_indexing_enabled`, `background_index_scope`, `background_pdf_indexing_enabled`, `background_pdf_max_size_mb`, `background_pdf_delay_sec`). Defaults seeded on first DB open.
 - **Startup**: Clipboard hydrate runs in Tauri `setup` (fast SQLite read). Index cache hydrate runs in the frontend after the first folder scan via `lookup_file_index_cache` (async, does not block the initial render). Background indexing queue starts ~200ms after first paint (does not block startup).
 
 ## Data model
@@ -133,7 +132,7 @@ flowchart LR
 
 Unified shape for files and clipboard snippets:
 
-- **Sources**: `Downloads`, `Desktop`, `Documents`, `Clipboard`
+- **Sources**: `Downloads`, `Desktop`, `Documents`, `Clipboard`, plus custom folder display names (folder basename, e.g. `Projects`)
 - **Types**: `PDF`, `Image`, `Text`, `Document`, `Spreadsheet`, `Archive`, `Clipboard`
 - **Supported file extensions**: `pdf`, `png`, `jpg`, `jpeg`, `webp`, `txt`, `docx`, `xlsx`, `csv`, `zip`
 - **Indexable for search**: `txt`, `pdf`, `docx` (`indexStatus`: `idle` | `loading` | `indexed` | `error`; UI labels: Not indexed / Indexed / Failed)
@@ -151,7 +150,8 @@ Unified shape for files and clipboard snippets:
 - Real folder scanning on macOS/Windows/Linux (via Tauri)
 - Clipboard text capture with deduplication (persisted across restarts)
 - Indexed file text cache on disk (skip re-extraction when file unchanged)
-- **Timeline**: source filter (All / per-folder / Clipboard), chronological layout; image files show 64×64 thumbnails when running in Tauri
+- **Timeline**: **Folders** row (All / default folders / custom folders / + Add Folder) filters the feed; type, view, and sort controls below; image files show 64×64 thumbnails when running in Tauri
+- **`useWatchedFolders`**: Add/remove custom watch folders from Timeline (native folder picker in Tauri); persists via `useSettings`
 - **Memories**: type filter (All / Files / Clipboard / PDF / DOCX / TXT / Images), list or grid, six sort orders, detail panel on select
 - **Favorites** sidebar: dedicated page listing all pinned items from every source (no source filters); star toggle on Timeline/Memories cards and details panel
 - **Indexed** sidebar: dedicated page for files with cached extracted text (Downloads, Desktop, Documents); search, sort, index metadata on cards
@@ -161,7 +161,7 @@ Unified shape for files and clipboard snippets:
 - **Indexing recovery** (Settings → Background indexing): **Clear all indexed content** (SQLite + in-memory reset) and **Reset indexing queue** (stop pending jobs, keep indexed files)
 - Settings statistics: indexed file count and total indexed characters
 - Mock timeline when running `npm run dev` without Tauri
-- **Settings** page: folder scan toggles, poll intervals, clipboard privacy, background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status
+- **Settings** page: default folder scan toggles, poll intervals, clipboard privacy, background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status — custom folders are managed on **Timeline**
 
 ## Development
 

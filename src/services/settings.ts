@@ -21,6 +21,7 @@ interface TauriAppSettingsDto {
   background_pdf_indexing_enabled?: boolean
   background_pdf_max_size_mb?: number
   background_pdf_delay_sec?: number
+  custom_watched_folders?: string[]
 }
 
 const VALID_SCOPES: BackgroundIndexScope[] = ['txt', 'txt_docx']
@@ -62,6 +63,7 @@ function fromTauriSettings(dto: TauriAppSettingsDto): AppSettings {
       dto.background_pdf_max_size_mb ?? DEFAULT_SETTINGS.backgroundPdfMaxSizeMb,
     backgroundPdfDelaySec:
       dto.background_pdf_delay_sec ?? DEFAULT_SETTINGS.backgroundPdfDelaySec,
+    customWatchedFolders: dto.custom_watched_folders ?? [],
   })
 }
 
@@ -79,6 +81,7 @@ function toTauriSettings(settings: AppSettings): TauriAppSettingsDto {
     background_pdf_indexing_enabled: clamped.backgroundPdfIndexingEnabled,
     background_pdf_max_size_mb: clamped.backgroundPdfMaxSizeMb,
     background_pdf_delay_sec: clamped.backgroundPdfDelaySec,
+    custom_watched_folders: clamped.customWatchedFolders,
   }
 }
 

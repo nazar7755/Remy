@@ -23,8 +23,15 @@ interface TauriAllowedPathsDto {
 }
 
 function toMemorySource(value: string): MemorySource {
-  if (value === 'Desktop' || value === 'Documents') return value
-  return 'Downloads'
+  if (
+    value === 'Desktop' ||
+    value === 'Documents' ||
+    value === 'Clipboard' ||
+    value === 'Downloads'
+  ) {
+    return value
+  }
+  return value
 }
 
 export class TauriFileSystemAdapter implements FileSystemAdapter {
@@ -39,6 +46,7 @@ export class TauriFileSystemAdapter implements FileSystemAdapter {
         scanDownloads: sources.scanDownloads,
         scanDesktop: sources.scanDesktop,
         scanDocuments: sources.scanDocuments,
+        customWatchedFolders: sources.customWatchedFolders,
       },
     )
     return rows.map((row) => ({

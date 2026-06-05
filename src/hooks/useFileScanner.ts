@@ -7,6 +7,7 @@ import {
   normalizeFilePath,
 } from '../lib/filePaths'
 import { isTauri } from '../lib/tauri'
+import { syncWatchedFolderScopes } from '../services/watchedFolders'
 import { parseExtension } from '../services/fileScanner/formatters'
 import { getClipboardEntries, pollClipboard } from '../services/clipboard'
 import {
@@ -402,12 +403,14 @@ export function useFileScanner(
         scanDownloads: scanSources.scanDownloads,
         scanDesktop: scanSources.scanDesktop,
         scanDocuments: scanSources.scanDocuments,
+        customWatchedFolders: scanSources.customWatchedFolders,
       })
       const scanned = dedupeFilesByPath(raw)
 
       setFileItems((prev) => mergeScanResults(prev, scanned))
       void hydrateIndexCache(scanned)
       setFolderPaths(paths)
+      void syncWatchedFolderScopes(scanSources, paths)
       setIsMocked(!isTauri())
       setLastUpdatedAt(new Date())
       setError(null)
@@ -462,6 +465,7 @@ export function useFileScanner(
     settings.scanDownloads,
     settings.scanDesktop,
     settings.scanDocuments,
+    settings.customWatchedFolders,
   ])
 
   return {

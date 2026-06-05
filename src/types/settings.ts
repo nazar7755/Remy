@@ -1,4 +1,6 @@
 /** Which non-PDF file types background indexing processes (txt always included). */
+import { dedupeFolderPaths } from '../lib/watchedFolders'
+
 export type BackgroundIndexScope = 'txt' | 'txt_docx'
 
 export interface AppSettings {
@@ -16,6 +18,8 @@ export interface AppSettings {
   backgroundPdfMaxSizeMb: number
   /** Delay between consecutive background PDF jobs (seconds). */
   backgroundPdfDelaySec: number
+  /** Absolute paths to user-added watch folders (persisted in SQLite). */
+  customWatchedFolders: string[]
 }
 
 export interface MemoryStatistics {
@@ -47,6 +51,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backgroundPdfIndexingEnabled: false,
   backgroundPdfMaxSizeMb: DEFAULT_BACKGROUND_PDF_MAX_SIZE_MB,
   backgroundPdfDelaySec: DEFAULT_BACKGROUND_PDF_DELAY_SEC,
+  customWatchedFolders: [],
 }
 
 export function isExtensionInBackgroundScope(
@@ -67,6 +72,7 @@ export const CLIPBOARD_POLL_MAX_MS = 60_000
 export function clampSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
+    customWatchedFolders: dedupeFolderPaths(settings.customWatchedFolders),
     filePollIntervalMs: Math.min(
       FILE_POLL_MAX_MS,
       Math.max(FILE_POLL_MIN_MS, settings.filePollIntervalMs),
@@ -88,5 +94,8 @@ export function clampSettings(settings: AppSettings): AppSettings {
 
 export type ScanSourcesOptions = Pick<
   AppSettings,
-  'scanDownloads' | 'scanDesktop' | 'scanDocuments'
+  | 'scanDownloads'
+  | 'scanDesktop'
+  | 'scanDocuments'
+  | 'customWatchedFolders'
 >

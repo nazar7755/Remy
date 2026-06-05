@@ -3,7 +3,7 @@ import {
   itemMatchesQuery,
   resolveSnippet,
 } from '../lib/contentSearch'
-import { formatLastUpdated } from '../lib/formatLastUpdated'
+import { folderDisplayName } from '../lib/watchedFolders'
 import {
   itemMatchesFolderFilter,
   itemMatchesTypeFilter,
@@ -14,7 +14,6 @@ import {
   saveMemoriesPreferences,
 } from '../services/memoriesPreferences'
 import {
-  MEMORIES_SORT_OPTIONS,
   type MemoriesSortOption,
   type MemoriesViewMode,
   type TimelineFolderFilter,
@@ -24,8 +23,7 @@ import type { MemoryItem } from '../types/memoryItem'
 import { FileDetailsPanel } from './FileDetailsPanel'
 import { MemoriesListRow } from './MemoriesListRow'
 import { MemoryItemCard } from './MemoryItemCard'
-import { TypeFilterSelect } from './MemoryTypeFilter'
-import { FolderFilterBar } from './SourceFilter'
+import { TimelineToolbar } from './TimelineToolbar'
 
 interface FileMemoryTimelineProps {
   items: MemoryItem[]
@@ -37,25 +35,31 @@ interface FileMemoryTimelineProps {
   indexNotice: string | null
   clipboardError: string | null
   query: string
+  customWatchedFolders: string[]
+  addingFolder?: boolean
+  foldersDisabled?: boolean
+  folderError?: string | null
+  onAddFolder: () => void
+  onRemoveCustomFolder: (path: string) => void | Promise<void>
   onRefresh: () => void
   onIndexContent: (filePath: string) => void
   onReindexContent: (filePath: string) => void
   onToggleFavorite: (item: MemoryItem) => void
 }
 
-const controlSelectClassName =
-  'rounded-md border border-remy-border bg-remy-elevated px-2.5 py-1.5 text-xs text-remy-text transition-colors hover:border-zinc-600 focus:border-remy-accent/60 focus:ring-2 focus:ring-remy-accent/20 focus:outline-none'
-
 export function FileMemoryTimeline({
   items,
   loading,
   error,
-  isMocked,
-  isWatching,
-  lastUpdatedAt,
   indexNotice,
   clipboardError,
   query,
+  customWatchedFolders,
+  addingFolder = false,
+  foldersDisabled = false,
+  folderError,
+  onAddFolder,
+  onRemoveCustomFolder,
   onRefresh,
   onIndexContent,
   onReindexContent,
@@ -110,96 +114,46 @@ export function FileMemoryTimeline({
     setSelectedId(null)
   }, [query, folderFilter, typeFilter, sort, viewMode])
 
+  const handleFolderFilterChange = (filter: TimelineFolderFilter) => {
+    setFolderFilter(filter)
+  }
+
+  const handleRemoveCustomFolder = async (path: string) => {
+    const removedName = folderDisplayName(path)
+    await onRemoveCustomFolder(path)
+    if (folderFilter === removedName) {
+      handleFolderFilterChange('All')
+    }
+  }
+
   const hasActiveFilters =
     q.length > 0 || folderFilter !== 'All' || typeFilter !== 'All'
 
   return (
-    <section className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs text-remy-muted">
-          {isMocked ? (
-            <p className="flex items-center gap-1.5">
-              <span
-                className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]"
-                aria-hidden
-              />
-              Preview mode
-            </p>
-          ) : isWatching ? (
-            <p className="flex items-center gap-1.5">
-              <span
-                className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]"
-                aria-hidden
-              />
-              Live monitoring active
-            </p>
-          ) : null}
-          <p className="mt-0.5 text-remy-muted">
-            Last updated:{' '}
-            {lastUpdatedAt
-              ? formatLastUpdated(lastUpdatedAt)
-              : loading
-                ? '…'
-                : '—'}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={loading}
-          className="rounded-md border border-remy-border bg-remy-elevated px-2.5 py-1.5 text-xs text-remy-subtle transition-colors hover:border-zinc-600 hover:text-remy-text disabled:opacity-50"
-        >
-          {loading ? 'Scanning…' : 'Rescan'}
-        </button>
-      </div>
+    <section className="space-y-2">
+      <TimelineToolbar
+        folderFilter={folderFilter}
+        customFolders={customWatchedFolders}
+        typeFilter={typeFilter}
+        sort={sort}
+        viewMode={viewMode}
+        loading={loading}
+        addingFolder={addingFolder}
+        foldersDisabled={foldersDisabled}
+        onFolderFilterChange={handleFolderFilterChange}
+        onAddFolder={onAddFolder}
+        onRemoveCustomFolder={(path) => void handleRemoveCustomFolder(path)}
+        onTypeFilterChange={setTypeFilter}
+        onSortChange={setSort}
+        onViewModeChange={setViewMode}
+        onRefresh={onRefresh}
+      />
 
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-remy-border pb-4">
-        <FolderFilterBar value={folderFilter} onChange={setFolderFilter} />
-
-        <div className="flex flex-wrap items-center gap-3">
-          <TypeFilterSelect value={typeFilter} onChange={setTypeFilter} />
-
-          <div
-            className="inline-flex rounded-lg border border-remy-border bg-remy-elevated/50 p-0.5"
-            role="group"
-            aria-label="View mode"
-          >
-            {(['list', 'grid'] as const).map((mode) => {
-              const active = viewMode === mode
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setViewMode(mode)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
-                    active
-                      ? 'bg-remy-elevated text-remy-text shadow-sm ring-1 ring-remy-border'
-                      : 'text-remy-muted hover:text-remy-subtle'
-                  }`}
-                >
-                  {mode}
-                </button>
-              )
-            })}
-          </div>
-
-          <label className="flex items-center gap-2 text-xs text-remy-muted">
-            <span className="font-medium">Sort</span>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as MemoriesSortOption)}
-              className={controlSelectClassName}
-            >
-              {MEMORIES_SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
+      {folderError && (
+        <p className="text-xs text-red-300/90" role="status">
+          {folderError}
+        </p>
+      )}
 
       {error && (
         <p className="text-xs text-red-300/90" role="status">

@@ -36,6 +36,15 @@ export type MemorySource =
   | 'Desktop'
   | 'Documents'
   | 'Clipboard'
+  | (string & {})
+
+export const DEFAULT_FILE_SOURCES = [
+  'Downloads',
+  'Desktop',
+  'Documents',
+] as const
+
+export type DefaultFileSource = (typeof DEFAULT_FILE_SOURCES)[number]
 
 export type SourceFilter = 'All' | MemorySource
 

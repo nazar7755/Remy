@@ -20,6 +20,7 @@ export interface ScanSourcesOptions {
   scanDownloads: boolean
   scanDesktop: boolean
   scanDocuments: boolean
+  customWatchedFolders: string[]
 }
 
 export interface FileSystemAdapter {

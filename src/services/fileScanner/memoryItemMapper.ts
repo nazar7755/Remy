@@ -9,10 +9,15 @@ import {
 } from './formatters'
 
 function toMemorySource(value: string): MemorySource {
-  if (value === 'Desktop' || value === 'Documents' || value === 'Clipboard') {
+  if (
+    value === 'Desktop' ||
+    value === 'Documents' ||
+    value === 'Clipboard' ||
+    value === 'Downloads'
+  ) {
     return value
   }
-  return 'Downloads'
+  return value
 }
 
 export function toMemoryItem(entry: ScannedFileEntry): MemoryItem | null {

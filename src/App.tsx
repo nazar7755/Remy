@@ -11,6 +11,7 @@ import { useBackgroundIndexing } from './hooks/useBackgroundIndexing'
 import { useFavorites } from './hooks/useFavorites'
 import { useFileScanner } from './hooks/useFileScanner'
 import { useSettings } from './hooks/useSettings'
+import { useWatchedFolders } from './hooks/useWatchedFolders'
 import { isTauri } from './lib/tauri'
 import type { NavSection } from './types/memory'
 
@@ -85,6 +86,12 @@ function App() {
     [safeItems],
   )
 
+  const watchedFolders = useWatchedFolders({
+    settings: settingsState.settings,
+    folderPaths: memoryScan.folderPaths,
+    updateSettings: settingsState.updateSettings,
+  })
+
   return (
     <div className="flex h-svh overflow-hidden">
       <Sidebar
@@ -119,7 +126,7 @@ function App() {
                   value={contentQuery}
                   onChange={setContentQuery}
                   placeholder={meta.searchPlaceholder}
-                  className="mb-6"
+                  className="mb-3"
                 />
                 <FileMemoryTimeline
                   items={safeItems}
@@ -131,6 +138,12 @@ function App() {
                   indexNotice={memoryScan.indexNotice}
                   clipboardError={memoryScan.clipboardError}
                   query={timelineQuery}
+                  customWatchedFolders={watchedFolders.customWatchedFolders}
+                  addingFolder={watchedFolders.addingFolder}
+                  foldersDisabled={settingsState.loading || settingsState.saving}
+                  folderError={watchedFolders.folderError}
+                  onAddFolder={() => void watchedFolders.addFolder()}
+                  onRemoveCustomFolder={(path) => void watchedFolders.removeFolder(path)}
                   onRefresh={() => void memoryScan.refresh()}
                   onIndexContent={(path) => void memoryScan.indexFile(path)}
                   onReindexContent={(path) =>

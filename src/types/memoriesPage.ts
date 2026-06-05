@@ -1,18 +1,24 @@
 export type MemoriesViewMode = 'list' | 'grid'
 
-export type TimelineFolderFilter =
-  | 'All'
-  | 'Downloads'
-  | 'Desktop'
-  | 'Documents'
-  | 'Files'
-
-export const TIMELINE_FOLDER_FILTERS: TimelineFolderFilter[] = [
+export const TIMELINE_DEFAULT_FOLDER_FILTERS = [
   'All',
   'Downloads',
   'Desktop',
   'Documents',
+] as const
+
+export const TIMELINE_STANDARD_FOLDER_FILTERS = [
+  ...TIMELINE_DEFAULT_FOLDER_FILTERS,
   'Files',
+] as const
+
+export type TimelineFolderFilter =
+  | (typeof TIMELINE_STANDARD_FOLDER_FILTERS)[number]
+  | (string & {})
+
+/** @deprecated Use TIMELINE_STANDARD_FOLDER_FILTERS plus dynamic custom sources. */
+export const TIMELINE_FOLDER_FILTERS: TimelineFolderFilter[] = [
+  ...TIMELINE_STANDARD_FOLDER_FILTERS,
 ]
 
 export type TimelineTypeFilter =

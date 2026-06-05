@@ -61,7 +61,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 
 *Expand what counts as a “memory” beyond three folders + clipboard.*
 
-- [ ] User-configurable watch folders (not only Downloads / Desktop / Documents)
+- [x] User-configurable watch folders — managed on Timeline (folder pills + Add Folder); default folder toggles remain in Settings
 - [ ] Screenshots folder detection or dedicated screenshot capture hook
 - [ ] Browser history / saved pages (extension or export import) — *scoped carefully for privacy*
 - [ ] “Notes” or quick-capture scratchpad inside Remy
@@ -109,4 +109,4 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 2. Update checkboxes when merging work (or strike through with PR link).
 3. If scope changes, edit **Principles** in `PROJECT_CONTEXT.md` first, then adjust phases here.
 
-**Current focus recommendation:** Phase 1.1 (Memories + Search dedicated views) — Settings and persistence are in place.
+**Current focus recommendation:** Phase 1.1 (Search dedicated view) — Settings, persistence, and custom watch folders are in place.

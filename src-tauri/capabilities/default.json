@@ -9,6 +9,7 @@
     "fs:default",
     "opener:default",
     "clipboard-manager:default",
+    "dialog:default",
     {
       "identifier": "opener:allow-open-path",
       "allow": [

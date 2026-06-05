@@ -1,6 +1,5 @@
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
-import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener'
-import { isTauri } from '../lib/tauri'
+import { isTauri, tauriInvoke } from '../lib/tauri'
 
 function requireDesktop(): void {
   if (!isTauri()) {
@@ -20,12 +19,12 @@ export function revealLabel(): string {
 
 export async function openFile(path: string): Promise<void> {
   requireDesktop()
-  await openPath(path)
+  await tauriInvoke('open_file_path', { path })
 }
 
 export async function revealInFileManager(path: string): Promise<void> {
   requireDesktop()
-  await revealItemInDir(path)
+  await tauriInvoke('reveal_file_path', { path })
 }
 
 export async function copyPath(path: string): Promise<void> {

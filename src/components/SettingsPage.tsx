@@ -4,6 +4,7 @@ import {
   fetchPersistedStatistics,
 } from '../services/settings'
 import { isTauri } from '../lib/tauri'
+import { countWatchedFolders } from '../lib/watchedFolders'
 import type { FileScannerState } from '../hooks/useFileScanner'
 import type { BackgroundIndexingState } from '../hooks/useBackgroundIndexing'
 import type { SettingsState } from '../hooks/useSettings'
@@ -275,10 +276,7 @@ export function SettingsPage({
   }
 
   const disabled = loading || saving
-  const noFoldersEnabled =
-    !settings.scanDownloads &&
-    !settings.scanDesktop &&
-    !settings.scanDocuments
+  const noFoldersEnabled = countWatchedFolders(settings) === 0
 
   if (loading) {
     return (
@@ -305,8 +303,8 @@ export function SettingsPage({
       )}
 
       <SettingsSection
-        title="Scanning"
-        description="Choose which standard folders Remy watches for files."
+        title="Default folders"
+        description="Turn standard folder scanning on or off. Add custom folders from Timeline."
       >
         <SettingsRow label="Downloads" hint="Monitor your Downloads folder">
           <Toggle
@@ -332,24 +330,10 @@ export function SettingsPage({
             onChange={(scanDocuments) => patch({ scanDocuments })}
           />
         </SettingsRow>
-        {memoryScan.folderPaths ? (
-          <div className="space-y-1.5 py-4">
-            <p className="text-xs font-medium text-remy-subtle">Watched paths</p>
-            <div className="space-y-1 font-mono text-[11px] text-remy-muted">
-              <p>Downloads · {memoryScan.folderPaths.downloads}</p>
-              <p>Desktop · {memoryScan.folderPaths.desktop}</p>
-              <p>Documents · {memoryScan.folderPaths.documents}</p>
-            </div>
-          </div>
-        ) : (
-          <p className="pb-4 text-xs text-remy-muted">
-            Folder paths are shown when running the desktop app.
-          </p>
-        )}
         {noFoldersEnabled && (
           <p className="pb-4 text-xs text-amber-400/90">
-            All folder scans are off — Remy will not track files until you enable
-            at least one source.
+            No folders are being watched — enable a default folder or add one
+            from Timeline.
           </p>
         )}
       </SettingsSection>
