@@ -89,6 +89,7 @@ export function useBackgroundIndexing(
     currentFileName: null,
     queuedCount: 0,
     indexingPdf: false,
+    indexingOcr: false,
   })
 
   const isActive =

@@ -47,8 +47,10 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [ ] Infinite scroll or pagination for large folders
 - [ ] Grouping by day/week in timeline
 - [x] Empty states per section (Timeline, Favorites, Indexed) and first-launch welcome onboarding
+- [x] Timeline toolbar redesign — Folders row (All / defaults / custom / + Add Folder), type/tag filters, view mode, sort
 - [ ] Error states per source
 - [x] Background indexing queue (off by default; TXT/DOCX; optional PDF with size/delay limits and crash-safe extraction)
+- [x] **Layout stability** — main-page scroll for Timeline + card-style Details panel; split-scroll experiment reverted (Jun 2026)
 
 ### 1.4 Content & search
 
@@ -117,4 +119,23 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 2. Update checkboxes when merging work (or strike through with PR link).
 3. If scope changes, edit **Principles** in `PROJECT_CONTEXT.md` first, then adjust phases here.
 
-**Current focus recommendation:** Phase 1.1 (Search dedicated view) — Quick Search overlay with context chips, global hotkey, file tags, onboarding, empty states, Settings, persistence, and custom watch folders are in place. OCR postponed until a dedicated worker exists.
+**Current focus recommendation:** Phase 1.1 (Search dedicated view) — Quick Search overlay with context chips, global hotkey, file tags, onboarding, empty states, Settings, persistence, custom watch folders, tray/background mode, and launch at login are in place. OCR postponed until a dedicated worker exists. Timeline layout uses stable main-page scroll (no nested scroll containers).
+
+---
+
+## Session log — 2026-06-05
+
+Consolidated milestone commit message: `feat: overlay contexts, tags, tray mode and stability improvements`
+
+| Deliverable | Notes |
+|-------------|--------|
+| Custom folders on Timeline | `useWatchedFolders`, folder pills, Add/Remove |
+| Timeline toolbar | Folders, types, tags, view, sort |
+| Empty states + onboarding | `EmptyState`, `OnboardingModal` |
+| Background mode + tray | `background_mode.rs`, `tray.rs` |
+| Launch at login | `launch_at_login.rs`, autostart plugin |
+| Global hotkey + overlay | `global_hotkey.rs`, `quick_search.rs`, `QuickSearchOverlay.tsx` |
+| Recent Activity + context chips | `quickSearchRecentActivity.ts`, `quickSearchContext.ts` |
+| Tags | SQLite, `useTags`, `tag:` search, Timeline filter |
+| OCR rollback | Flag-gated off in frontend + Rust |
+| Stability | Scroll layout experiment reverted; `indexingOcr` queue state fix |

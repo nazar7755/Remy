@@ -208,6 +208,34 @@ Unified shape for files and clipboard snippets:
 - **Quick Search contexts** (`quickSearchContext.ts`): **All** empty query shows sectioned live browse (files, clipboard, favorites, tag pills) — never narrower than Clipboard. **Recent** empty query shows recent files + clipboard (no favorites section). **Clipboard** / **Favorites** / **Tags** scope browse and search to that source. Empty states distinguish “No memories yet” (truly empty) vs “No results found” (filters/search). Tag rows in All switch to Tags context on select
 - Mock timeline when running `npm run dev` without Tauri
 - **Settings** page: default folder scan toggles, poll intervals, clipboard privacy, shortcuts (read-only display), startup (launch at login + run in background when closed), background indexing (enable + file-type scope + recovery actions), clear clipboard history, live statistics and queue status — custom folders are managed on **Timeline**. OCR settings removed from UI while postponed.
+- **Layout stability**: Timeline + Details use standard main-page scroll (card-style detail panel). An experimental split-scroll layout was tried and **reverted** — do not reintroduce nested flex scroll containers without thorough testing.
+
+## Session summary (2026-06-05)
+
+Shipped in this development session (commits `734fa86` … `ea2ad04`):
+
+| Milestone | Status |
+|-----------|--------|
+| Custom folders on Timeline (Settings → Timeline toolbar) | ✅ |
+| Timeline toolbar redesign (Folders row, filters, view/sort) | ✅ |
+| Empty states (`EmptyState` on Timeline, Favorites, Indexed) | ✅ |
+| Welcome onboarding modal (first launch) | ✅ |
+| Background mode (hide on close, keep polling) | ✅ |
+| Menu bar / tray integration | ✅ |
+| Launch at login (macOS) | ✅ |
+| Global hotkey `Cmd + Shift + Space` | ✅ |
+| Quick Search overlay (Spotlight-style) | ✅ |
+| Recent Activity in overlay | ✅ |
+| Context chips: All, Recent, Clipboard, Favorites, Tags | ✅ |
+| Overlay navigation + Esc to close | ✅ |
+| Tags system (SQLite, details panel, Timeline filter) | ✅ |
+| Tag search (`tag:xyz`) | ✅ |
+| OCR rollback (`OCR_INDEXING_ENABLED = false`) | ✅ |
+| Timeline/Details scroll experiment | ⏪ Reverted for stability |
+
+**Modified areas (88 files):** `src/components/` (Timeline toolbar, overlay, tags, onboarding, empty states), `src/hooks/`, `src/services/`, `src/lib/` (`contentSearch`, `quickSearchContext`, `tags`), `src-tauri/src/` (tray, background mode, launch at login, global hotkey, quick search, OCR flag), persistence (tags tables).
+
+**Verification:** `npm run lint` reports pre-existing react-hooks warnings; `npm run build` passes after queue state fix. Timeline uses main-page scroll; overlay and tray features require `npm run tauri:dev` on macOS.
 
 ## Development
 
