@@ -11,7 +11,9 @@ import {
   buildRecentActivity,
   clipboardPreviewText,
 } from '../lib/quickSearchRecentActivity'
+import { formatTagLabel } from '../lib/tagNormalize'
 import {
+  formatTagMemoryCount,
   memoryRowSnippetQuery,
   QUICK_SEARCH_CONTEXT_LABELS,
   QUICK_SEARCH_CONTEXTS,
@@ -19,12 +21,14 @@ import {
   quickSearchHasAnyContent,
   quickSearchIsSearchResults,
   quickSearchShowRecentSections,
+  quickSearchTagAutocompleteActive,
   RECENT_ACTIVITY_SECTION_LABELS,
   resolveFavoriteItemsForQuickSearch,
   resolveQuickSearchRows,
   type QuickSearchContext,
   type QuickSearchNavRow,
 } from '../lib/quickSearchContext'
+import { tagUsageFromAssignments } from '../lib/tags'
 import type { MemorySearchResult } from '../lib/contentSearch'
 import { memoryItemTypeStyles } from '../lib/memoryItemStyles'
 import { isTauri, tauriInvoke } from '../lib/tauri'
@@ -176,6 +180,28 @@ function FavoriteRowContent({ item }: { item: MemoryItem }) {
   )
 }
 
+function TagSuggestionRowContent({
+  tagName,
+  usageCount,
+}: {
+  tagName: string
+  usageCount: number
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="text-sm font-medium text-remy-text">
+        {formatTagLabel(tagName)}
+      </span>
+      <span className="text-remy-muted" aria-hidden>
+        ·
+      </span>
+      <span className="text-sm text-remy-muted">
+        {formatTagMemoryCount(usageCount)}
+      </span>
+    </div>
+  )
+}
+
 function MemoryRowContent({
   row,
   trimmedQuery,
@@ -264,6 +290,11 @@ export function QuickSearchOverlay() {
 
   const items = useMemo(() => memoryScan.items ?? [], [memoryScan.items])
 
+  const tagUsage = useMemo(
+    () => tagUsageFromAssignments(tagsState.assignments),
+    [tagsState.assignments],
+  )
+
   const favoriteItems = useMemo(
     () =>
       resolveFavoriteItemsForQuickSearch(
@@ -298,6 +329,7 @@ export function QuickSearchOverlay() {
         favoriteItems,
         recentActivity,
         allTagNames: tagsState.allTagNames,
+        tagUsage,
         selectedTag,
         maxResults: MAX_RESULTS,
       }),
@@ -308,8 +340,14 @@ export function QuickSearchOverlay() {
       favoriteItems,
       recentActivity,
       tagsState.allTagNames,
+      tagUsage,
       selectedTag,
     ],
+  )
+
+  const tagAutocompleteActive = quickSearchTagAutocompleteActive(
+    query,
+    tagsState.allTagNames,
   )
 
   const showRecentSections = quickSearchShowRecentSections(context, query)
@@ -434,13 +472,19 @@ export function QuickSearchOverlay() {
   const activateRow = useCallback(
     (row: QuickSearchNavRow, openInMain: boolean) => {
       if (row.kind === 'tag') {
+        if (row.usageCount !== undefined) {
+          setQuery(`tag:${row.tagName}`)
+          setSelectedIndex(0)
+          focusInput()
+          return
+        }
         setContext('tags')
         selectTag(row.tagName)
         return
       }
       void activateMemoryResult(row.result, openInMain)
     },
-    [activateMemoryResult, selectTag],
+    [activateMemoryResult, focusInput, selectTag],
   )
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -486,10 +530,12 @@ export function QuickSearchOverlay() {
     query,
     selectedTag,
     hasAnyContent,
+    tagsState.allTagNames,
   )
 
-  const listLabel =
-    context === 'tags' && !selectedTag && !trimmedQuery
+  const listLabel = tagAutocompleteActive
+    ? 'Tag suggestions'
+    : context === 'tags' && !selectedTag && !trimmedQuery
       ? 'Tags'
       : isSearchResults
         ? 'Search results'
@@ -589,7 +635,14 @@ export function QuickSearchOverlay() {
                   registerRef={registerItemRef}
                 >
                   {row.kind === 'tag' ? (
-                    <TagPill tagName={row.tagName} size="sm" />
+                    row.usageCount !== undefined ? (
+                      <TagSuggestionRowContent
+                        tagName={row.tagName}
+                        usageCount={row.usageCount}
+                      />
+                    ) : (
+                      <TagPill tagName={row.tagName} size="sm" />
+                    )
                   ) : (
                     <MemoryRowContent
                       row={row}

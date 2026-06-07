@@ -13,6 +13,7 @@ import {
   RECENT_ACTIVITY_SECTION_LABELS,
 } from './quickSearchRecentActivity'
 import { resolveFavoriteItems } from './favorites'
+import { normalizeTagName } from './tagNormalize'
 import { itemHasAllTags, itemHasTag } from './tags'
 import type { FavoriteRecord } from '../types/favorite'
 import type { MemoryItem } from '../types/memoryItem'
@@ -43,7 +44,7 @@ export type QuickSearchNavRow =
       section?: RecentActivitySection
       showSectionHeader?: boolean
     }
-  | { kind: 'tag'; tagName: string }
+  | { kind: 'tag'; tagName: string; usageCount?: number }
 
 export { RECENT_ACTIVITY_SECTION_LABELS }
 
@@ -165,6 +166,112 @@ function activityRowsToNavRows(
   }))
 }
 
+export interface QuickSearchTagAutocompleteState {
+  /** Tag-name filter after `tag:`, `#`, or empty for bare `tag` / `tag:` / `#`. */
+  suffix: string
+}
+
+/** Detect tag-autocomplete mode (not full-text search). */
+export function parseQuickSearchTagAutocomplete(
+  query: string,
+): QuickSearchTagAutocompleteState | null {
+  const trimmed = query.trim()
+  if (!trimmed) return null
+
+  if (trimmed.toLowerCase() === 'tag') {
+    return { suffix: '' }
+  }
+
+  if (/^tag:/i.test(trimmed)) {
+    const { text } = parseSearchQuery(trimmed)
+    if (text) return null
+    const colonAt = trimmed.toLowerCase().indexOf('tag:')
+    return { suffix: trimmed.slice(colonAt + 4) }
+  }
+
+  if (trimmed.startsWith('#')) {
+    const suffix = trimmed.slice(1)
+    if (/\s/.test(suffix)) return null
+    return { suffix }
+  }
+
+  return null
+}
+
+export function quickSearchTagAutocompleteActive(
+  query: string,
+  allTagNames: string[],
+): boolean {
+  const state = parseQuickSearchTagAutocomplete(query)
+  if (!state) return false
+  return tagAutocompleteShowsSuggestions(state.suffix, allTagNames)
+}
+
+function tagAutocompleteShowsSuggestions(
+  suffix: string,
+  allTagNames: string[],
+): boolean {
+  if (!suffix) return true
+
+  const normalized = normalizeTagName(suffix)
+  if (
+    normalized &&
+    allTagNames.includes(normalized) &&
+    suffix.toLowerCase() === normalized
+  ) {
+    return false
+  }
+
+  return true
+}
+
+function filterTagsForAutocomplete(
+  allTagNames: string[],
+  suffix: string,
+): string[] {
+  const needle = suffix.toLowerCase()
+  if (!needle) return allTagNames
+
+  return allTagNames.filter((name) => name.toLowerCase().startsWith(needle))
+}
+
+/** Map completed `#name` / `tag:name` autocomplete input to a tag search query. */
+function resolveTagSearchQuery(query: string, allTagNames: string[]): string {
+  const state = parseQuickSearchTagAutocomplete(query)
+  if (!state) return query
+  if (tagAutocompleteShowsSuggestions(state.suffix, allTagNames)) return query
+
+  const normalized = normalizeTagName(state.suffix)
+  if (normalized && allTagNames.includes(normalized)) {
+    return `tag:${normalized}`
+  }
+
+  return query
+}
+
+export function buildTagAutocompleteRows(
+  query: string,
+  allTagNames: string[],
+  tagUsage: Map<string, number>,
+  maxResults: number,
+): QuickSearchNavRow[] | null {
+  const state = parseQuickSearchTagAutocomplete(query)
+  if (!state) return null
+  if (!tagAutocompleteShowsSuggestions(state.suffix, allTagNames)) return null
+
+  return filterTagsForAutocomplete(allTagNames, state.suffix)
+    .slice(0, maxResults)
+    .map((tagName) => ({
+      kind: 'tag' as const,
+      tagName,
+      usageCount: tagUsage.get(tagName) ?? 0,
+    }))
+}
+
+export function formatTagMemoryCount(count: number): string {
+  return count === 1 ? '1 memory' : `${count} memories`
+}
+
 function filterTagNames(allTagNames: string[], query: string): string[] {
   const { tags, text } = parseSearchQuery(query)
   if (tags.length > 0) return []
@@ -221,6 +328,7 @@ export interface ResolveQuickSearchRowsOptions {
   favoriteItems: MemoryItem[]
   recentActivity: RecentActivity | null
   allTagNames: string[]
+  tagUsage: Map<string, number>
   selectedTag: string | null
   maxResults: number
 }
@@ -235,15 +343,27 @@ export function resolveQuickSearchRows(
     favoriteItems,
     recentActivity,
     allTagNames,
+    tagUsage,
     selectedTag,
     maxResults,
   } = options
 
   const trimmed = query.trim()
   const hasQuery = trimmed.length > 0
+  const searchQuery = resolveTagSearchQuery(trimmed, allTagNames)
+
+  const tagAutocompleteRows = buildTagAutocompleteRows(
+    trimmed,
+    allTagNames,
+    tagUsage,
+    maxResults,
+  )
+  if (tagAutocompleteRows !== null) {
+    return tagAutocompleteRows
+  }
 
   if (context === 'tags') {
-    const requiredTags = resolveRequiredTags(trimmed, selectedTag)
+    const requiredTags = resolveRequiredTags(searchQuery, selectedTag)
 
     if (!hasQuery && !selectedTag) {
       return toTagRows(filterTagNames(allTagNames, trimmed))
@@ -259,7 +379,7 @@ export function resolveQuickSearchRows(
     }
 
     if (hasQuery && requiredTags.length === 0) {
-      const matchingTags = filterTagNames(allTagNames, trimmed)
+      const matchingTags = filterTagNames(allTagNames, searchQuery)
       if (matchingTags.length > 0) {
         return toTagRows(matchingTags)
       }
@@ -267,7 +387,7 @@ export function resolveQuickSearchRows(
 
     if (requiredTags.length > 0) {
       const tagged = items.filter((item) => itemHasAllTags(item, requiredTags))
-      const { text } = parseSearchQuery(trimmed)
+      const { text } = parseSearchQuery(searchQuery)
       if (!text) {
         return toMemoryRows(
           sortByNewest(tagged)
@@ -275,16 +395,16 @@ export function resolveQuickSearchRows(
             .map((item) => ({ item, snippet: null })),
         )
       }
-      return toMemoryRows(searchInPool(tagged, trimmed, maxResults))
+      return toMemoryRows(searchInPool(tagged, searchQuery, maxResults))
     }
 
-    return toMemoryRows(searchInPool(items, trimmed, maxResults))
+    return toMemoryRows(searchInPool(items, searchQuery, maxResults))
   }
 
   if (context === 'all') {
     if (hasQuery) {
       const allPool = unionSearchableItems(items, favoriteItems)
-      return toMemoryRows(searchInPool(allPool, trimmed, maxResults))
+      return toMemoryRows(searchInPool(allPool, searchQuery, maxResults))
     }
     return buildAllBrowseFromLiveData(
       items,
@@ -296,7 +416,7 @@ export function resolveQuickSearchRows(
 
   if (context === 'recent') {
     if (hasQuery) {
-      return toMemoryRows(searchInPool(items, trimmed, maxResults))
+      return toMemoryRows(searchInPool(items, searchQuery, maxResults))
     }
     if (recentActivity) {
       const activityRows = activityRowsToNavRows(recentActivity, false)
@@ -325,7 +445,7 @@ export function resolveQuickSearchRows(
   const pool = searchPool(context, items, favoriteItems)
 
   if (hasQuery) {
-    return toMemoryRows(searchInPool(pool, trimmed, maxResults))
+    return toMemoryRows(searchInPool(pool, searchQuery, maxResults))
   }
 
   if (context === 'clipboard') {
@@ -346,7 +466,13 @@ export function quickSearchEmptyMessage(
   query: string,
   selectedTag: string | null,
   hasAnyContent = true,
+  allTagNames: string[] = [],
 ): string {
+  if (parseQuickSearchTagAutocomplete(query.trim()) !== null) {
+    if (allTagNames.length === 0) return 'No tags yet'
+    return 'No matching tags'
+  }
+
   if (query.trim()) return 'No results found'
 
   switch (context) {
