@@ -33,6 +33,7 @@ zip = "2"
 quick-xml = "0.37"
 arboard = "3"
 uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 ocrs = "0.12"
 rten = "0.24"

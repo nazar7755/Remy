@@ -1,30 +1,193 @@
 import type { MemoryItem, SourceFilter } from '../types/memoryItem'
-import { isClipboardItem } from '../types/memoryItem'
+import { isClipboardItem, isImageFile } from '../types/memoryItem'
 import { itemHasAllTags } from './tags'
 import { normalizeTagName } from './tagNormalize'
 
-export interface ParsedSearchQuery {
+/**
+ * Remy search query parser — operators + free text.
+ *
+ * Supported operators (case-insensitive):
+ * - `tag:name` — item must have tag (e.g. `tag:edu`, `tag:crypto`)
+ * - `type:kind` — pdf, docx, txt, image, clipboard, or FileMemoryType name
+ * - `source:place` — downloads, desktop, documents, clipboard, favorites, or custom folder name
+ *
+ * Examples:
+ * - `history type:docx` — text "history" in docx files
+ * - `invoice type:pdf source:downloads` — pdf from Downloads matching "invoice"
+ * - `tag:edu type:docx` — tagged edu + docx extension
+ * - `discord source:clipboard` — clipboard snippets matching "discord"
+ * - `tag:crypto` — tag filter only (no free text)
+ */
+export interface SearchQueryFilters {
   tags: string[]
-  text: string
+  types: string[]
+  sources: string[]
+  favoritesOnly: boolean
 }
 
-/** Split `tag:crypto ethereum` into tag filters and free-text tokens. */
+export interface ParsedSearchQuery {
+  textQuery: string
+  filters: SearchQueryFilters
+}
+
+const OPERATOR_PATTERN = /\b(tag|type|source):([^\s]+)/gi
+
+const SOURCE_ALIASES: Record<string, string | 'favorites'> = {
+  downloads: 'Downloads',
+  download: 'Downloads',
+  desktop: 'Desktop',
+  documents: 'Documents',
+  docs: 'Documents',
+  clipboard: 'Clipboard',
+  favorites: 'favorites',
+  favorite: 'favorites',
+}
+
+function normalizeTypeToken(raw: string): string {
+  return raw.trim().toLowerCase()
+}
+
+function normalizeSourceToken(raw: string): string | 'favorites' | null {
+  const token = raw.trim().toLowerCase()
+  if (!token) return null
+  return SOURCE_ALIASES[token] ?? raw.trim()
+}
+
+/** Parse a search string into free text and structured filters. */
 export function parseSearchQuery(query: string): ParsedSearchQuery {
   const tags: string[] = []
+  const types: string[] = []
+  const sources: string[] = []
+  let favoritesOnly = false
   let text = query
 
-  for (const match of query.matchAll(/\btag:([^\s]+)/gi)) {
-    const normalized = normalizeTagName(match[1])
-    if (normalized && !tags.includes(normalized)) {
-      tags.push(normalized)
+  for (const match of query.matchAll(OPERATOR_PATTERN)) {
+    const operator = match[1].toLowerCase()
+    const value = match[2]
+
+    if (operator === 'tag') {
+      const normalized = normalizeTagName(value)
+      if (normalized && !tags.includes(normalized)) {
+        tags.push(normalized)
+      }
+    } else if (operator === 'type') {
+      const token = normalizeTypeToken(value)
+      if (token && !types.includes(token)) {
+        types.push(token)
+      }
+    } else if (operator === 'source') {
+      const normalized = normalizeSourceToken(value)
+      if (normalized === 'favorites') {
+        favoritesOnly = true
+      } else if (normalized && !sources.includes(normalized)) {
+        sources.push(normalized)
+      }
     }
+
     text = text.replace(match[0], ' ')
   }
 
   return {
-    tags,
-    text: text.replace(/\s+/g, ' ').trim(),
+    textQuery: text.replace(/\s+/g, ' ').trim(),
+    filters: { tags, types, sources, favoritesOnly },
   }
+}
+
+function itemMatchesTypeFilter(item: MemoryItem, typeToken: string): boolean {
+  const token = typeToken.toLowerCase()
+
+  if (token === 'clipboard') {
+    return isClipboardItem(item)
+  }
+
+  if (token === 'pdf') {
+    return item.type === 'PDF' || item.extension === 'pdf'
+  }
+
+  if (token === 'docx') {
+    return item.extension === 'docx'
+  }
+
+  if (token === 'txt') {
+    return item.extension === 'txt' || item.type === 'Text'
+  }
+
+  if (token === 'image' || token === 'images') {
+    return item.type === 'Image' || isImageFile(item)
+  }
+
+  if (item.type.toLowerCase() === token) {
+    return true
+  }
+
+  if (item.extension.toLowerCase() === token) {
+    return true
+  }
+
+  return false
+}
+
+function itemMatchesTypeFilters(item: MemoryItem, types: string[]): boolean {
+  if (types.length === 0) return true
+  return types.some((token) => itemMatchesTypeFilter(item, token))
+}
+
+function itemMatchesSourceFilters(
+  item: MemoryItem,
+  filters: SearchQueryFilters,
+): boolean {
+  if (filters.favoritesOnly && !item.isFavorite) {
+    return false
+  }
+
+  if (filters.sources.length === 0) {
+    return true
+  }
+
+  return filters.sources.some(
+    (source) => item.source.toLowerCase() === source.toLowerCase(),
+  )
+}
+
+function itemMatchesOperatorFilters(
+  item: MemoryItem,
+  filters: SearchQueryFilters,
+): boolean {
+  if (filters.tags.length > 0 && !itemHasAllTags(item, filters.tags)) {
+    return false
+  }
+
+  if (!itemMatchesTypeFilters(item, filters.types)) {
+    return false
+  }
+
+  if (!itemMatchesSourceFilters(item, filters)) {
+    return false
+  }
+
+  return true
+}
+
+function itemMatchesTextQuery(item: MemoryItem, textQuery: string): boolean {
+  const q = textQuery.toLowerCase()
+
+  if (item.fileName.toLowerCase().includes(q)) return true
+  if (item.filePath.toLowerCase().includes(q)) return true
+  if (item.extension.toLowerCase().includes(q)) return true
+  if (item.type.toLowerCase().includes(q)) return true
+  if (item.source.toLowerCase().includes(q)) return true
+
+  if ((item.tags ?? []).some((tag) => tag.includes(q))) return true
+
+  if (isClipboardItem(item) && item.content?.toLowerCase().includes(q)) {
+    return true
+  }
+
+  if (item.indexStatus === 'indexed' && item.content?.toLowerCase().includes(q)) {
+    return true
+  }
+
+  return false
 }
 
 export function isIndexedFile(item: MemoryItem): boolean {
@@ -49,35 +212,17 @@ export function itemMatchesQuery(item: MemoryItem, query: string): boolean {
   const trimmed = query.trim()
   if (!trimmed) return true
 
-  const { tags, text } = parseSearchQuery(trimmed)
+  const { textQuery, filters } = parseSearchQuery(trimmed)
 
-  if (tags.length > 0 && !itemHasAllTags(item, tags)) {
+  if (!itemMatchesOperatorFilters(item, filters)) {
     return false
   }
 
-  if (!text) {
+  if (!textQuery) {
     return true
   }
 
-  const q = text.toLowerCase()
-
-  if (item.fileName.toLowerCase().includes(q)) return true
-  if (item.filePath.toLowerCase().includes(q)) return true
-  if (item.extension.toLowerCase().includes(q)) return true
-  if (item.type.toLowerCase().includes(q)) return true
-  if (item.source.toLowerCase().includes(q)) return true
-
-  if ((item.tags ?? []).some((tag) => tag.includes(q))) return true
-
-  if (isClipboardItem(item) && item.content?.toLowerCase().includes(q)) {
-    return true
-  }
-
-  if (item.indexStatus === 'indexed' && item.content?.toLowerCase().includes(q)) {
-    return true
-  }
-
-  return false
+  return itemMatchesTextQuery(item, textQuery)
 }
 
 export function itemMatchesSourceFilter(
@@ -93,7 +238,8 @@ export function buildContentSnippet(
   query: string,
   contextChars = 55,
 ): string | null {
-  const q = query.trim()
+  const { textQuery } = parseSearchQuery(query)
+  const q = textQuery.trim()
   if (!q) return null
 
   const lower = content.toLowerCase()
@@ -115,17 +261,17 @@ export function resolveSnippet(
   item: MemoryItem,
   query: string,
 ): string | null {
-  const { text } = parseSearchQuery(query)
-  if (!text) return null
+  const { textQuery } = parseSearchQuery(query)
+  if (!textQuery) return null
 
   if (isClipboardItem(item) && item.content) {
-    return buildContentSnippet(item.content, text)
+    return buildContentSnippet(item.content, query)
   }
 
   if (item.indexStatus !== 'indexed' || !item.content) {
     return null
   }
-  return buildContentSnippet(item.content, text)
+  return buildContentSnippet(item.content, query)
 }
 
 export function searchMemoryItems(
@@ -134,7 +280,7 @@ export function searchMemoryItems(
   sourceFilter: SourceFilter,
 ): MemorySearchResult[] {
   const trimmed = query.trim()
-  const { text } = parseSearchQuery(trimmed)
+  const { textQuery } = parseSearchQuery(trimmed)
 
   const filtered = items.filter(
     (item) =>
@@ -142,7 +288,7 @@ export function searchMemoryItems(
       itemMatchesQuery(item, trimmed),
   )
 
-  if (!text) {
+  if (!textQuery) {
     return filtered.map((item) => ({ item, snippet: null }))
   }
 

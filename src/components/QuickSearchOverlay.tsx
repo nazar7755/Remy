@@ -577,7 +577,7 @@ export function QuickSearchOverlay() {
               setSelectedIndex(0)
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Search files, clipboard, and indexed content…"
+            placeholder="Search files, tags, type:pdf, source:clipboard…"
             className="h-11 w-full rounded-lg border border-remy-border bg-remy-elevated pr-4 pl-9 text-sm text-remy-text shadow-sm transition-colors placeholder:text-remy-muted hover:border-zinc-600 focus:border-remy-accent/60 focus:ring-2 focus:ring-remy-accent/20 focus:outline-none"
             autoComplete="off"
             spellCheck={false}

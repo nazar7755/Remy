@@ -1,6 +1,11 @@
 import { isTauri, tauriInvoke } from '../../lib/tauri'
 import type { MemoryItem } from '../../types/memoryItem'
 import {
+  hasSameNormalizedTextOnDay,
+  localDayKey,
+  normalizeClipboardText,
+} from './clipboardNormalize'
+import {
   clipboardEntriesToMemoryItems,
   type ClipboardEntryDto,
 } from './clipboardMapper'
@@ -19,6 +24,7 @@ const MOCK_CLIPBOARD: ClipboardEntryDto[] = [
 ]
 
 let mockEntries = [...MOCK_CLIPBOARD]
+let mockLastNormalized: string | null = null
 
 interface TauriClipboardEntryDto {
   id: string
@@ -50,21 +56,31 @@ export async function pollClipboard(): Promise<MemoryItem[]> {
 
   try {
     const text = await navigator.clipboard.readText()
-    const trimmed = text.trim()
-    if (trimmed) {
-      const last = mockEntries[0]
+    const normalized = normalizeClipboardText(text)
+    if (normalized) {
       const now = Date.now()
-      const isDup =
-        last?.text === trimmed && now - last.capturedAtMs < 30_000
-      if (!isDup) {
+      const today = localDayKey(now)
+      const alreadyToday = hasSameNormalizedTextOnDay(
+        mockEntries,
+        normalized,
+        today,
+      )
+
+      if (alreadyToday) {
+        if (mockLastNormalized !== normalized) {
+          console.info('Clipboard duplicate skipped')
+        }
+        mockLastNormalized = normalized
+      } else {
         mockEntries = [
           {
             id: `mock-${now}`,
-            text: trimmed,
+            text: normalized,
             capturedAtMs: now,
           },
           ...mockEntries,
         ].slice(0, 100)
+        mockLastNormalized = normalized
       }
     }
   } catch {

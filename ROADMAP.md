@@ -12,7 +12,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [x] Dark UI with reusable components (`Sidebar`, `SearchBar`, `MemoryItemCard`, `FileMemoryTimeline`)
 - [x] Tauri 2 desktop shell
 - [x] Scan Downloads, Desktop, Documents for supported file types
-- [x] Clipboard text monitoring (in-memory, session-scoped)
+- [x] Clipboard text capture with **daily normalized deduplication** (one entry per unique text per local day; max 500; existing history preserved)
 - [x] Merge file + clipboard into unified timeline
 - [x] Client-side search (metadata + indexed content + **`tag:`** filters)
 - [x] On-demand content indexing for txt / pdf / docx (Rust)
@@ -40,7 +40,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 
 - [x] Local store for clipboard history across restarts (SQLite, `com.remy.app/remy.sqlite`)
 - [x] Cache indexed file text on disk to avoid re-extracting on every launch (mtime + size validation)
-- [ ] Optional retention limits (e.g. max clipboard entries by age — count cap of 500 is enforced)
+- [ ] Optional retention limits (e.g. max clipboard entries by age — count cap of 500 is enforced; daily dedupe reduces duplicate spam)
 
 ### 1.3 Timeline UX
 
@@ -59,7 +59,8 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [ ] Index `xlsx` / `csv` text where practical
 - [x] Image thumbnails in cards (png/jpg/jpeg/webp; lazy 64×64 via Tauri asset protocol + `convertFileSrc`)
 - [ ] **OCR image indexing (Phase 1)** — *postponed* — prototype shipped (`ocrs`, `file_index_cache` integration) but disabled (`OCR_INDEXING_ENABLED = false`) due to UI lag; needs safer worker/background process before re-enable
-- [ ] Fuzzy or ranked search (today: substring match in `contentSearch`, including `tag:` syntax)
+- [x] **Search operators** — `parseSearchQuery()` in `contentSearch.ts`; `tag:`, `type:`, `source:` filters + combined free-text search; Timeline, header search, overlay, Favorites, Indexed
+- [ ] Fuzzy or ranked search (today: substring match + operator filters in `contentSearch`)
 
 ---
 
@@ -135,6 +136,31 @@ Commit: `feat: add tag autocomplete and overlay tag search`
 | Selection | Fills `tag:name`, shows tagged memories in overlay |
 | Tag search | Completed `tag:name` uses `contentSearch` tag filter; `#name` normalized to `tag:name` |
 | Overlay UI | `TagSuggestionRowContent` in `QuickSearchOverlay.tsx`; ↑↓ Enter click unchanged |
+
+---
+
+## Session log — search operators & clipboard dedupe
+
+Commit: `feat: add search operators and clipboard deduplication`
+
+| Deliverable | Notes |
+|-------------|--------|
+| Search operators | `parseSearchQuery()` → `textQuery` + `filters` in `contentSearch.ts` |
+| `type:` | pdf, docx, txt, image, clipboard |
+| `source:` | downloads, desktop, documents, clipboard, favorites, custom folders |
+| Combined queries | e.g. `history type:docx`, `tag:edu type:docx` |
+| Clipboard dedupe | `clipboard_monitor.rs` — normalize, one entry per text per local day |
+| Mock parity | `clipboardNormalize.ts` for browser dev polling |
+
+---
+
+## Session log — search operators
+
+| Deliverable | Notes |
+|-------------|--------|
+| Query parser | `parseSearchQuery()` → `{ textQuery, filters }` in `contentSearch.ts` |
+| Operators | `tag:`, `type:`, `source:` with combined free text |
+| Surfaces | Timeline, global header, Quick Search, Favorites, Indexed |
 
 ---
 

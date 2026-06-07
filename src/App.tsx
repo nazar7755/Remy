@@ -27,7 +27,7 @@ const SECTION_META: Record<
   Timeline: {
     title: 'Remy',
     subtitle: 'Browse and search everything Remy remembers',
-    searchPlaceholder: 'Search by name, path, tag:crypto, or text…',
+    searchPlaceholder: 'Search files, tags, type:pdf, source:clipboard…',
   },
   Favorites: {
     title: 'Favorites',
@@ -173,7 +173,7 @@ function App() {
             ref={globalSearchRef}
             value={globalQuery}
             onChange={setGlobalQuery}
-            placeholder="Search across all memories… (try tag:crypto)"
+            placeholder="Search files, tags, type:pdf, source:clipboard…"
             size="sm"
             className="max-w-md flex-1"
           />

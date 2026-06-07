@@ -183,10 +183,12 @@ export function parseQuickSearchTagAutocomplete(
   }
 
   if (/^tag:/i.test(trimmed)) {
-    const { text } = parseSearchQuery(trimmed)
-    if (text) return null
+    const { textQuery } = parseSearchQuery(trimmed)
+    if (textQuery) return null
     const colonAt = trimmed.toLowerCase().indexOf('tag:')
-    return { suffix: trimmed.slice(colonAt + 4) }
+    const afterTag = trimmed.slice(colonAt + 4)
+    const suffix = afterTag.split(/\s/)[0] ?? ''
+    return { suffix }
   }
 
   if (trimmed.startsWith('#')) {
@@ -273,9 +275,9 @@ export function formatTagMemoryCount(count: number): string {
 }
 
 function filterTagNames(allTagNames: string[], query: string): string[] {
-  const { tags, text } = parseSearchQuery(query)
-  if (tags.length > 0) return []
-  const needle = text.toLowerCase()
+  const { textQuery, filters } = parseSearchQuery(query)
+  if (filters.tags.length > 0) return []
+  const needle = textQuery.toLowerCase()
   if (!needle) return allTagNames
   return allTagNames.filter((name) => name.includes(needle))
 }
@@ -284,8 +286,8 @@ function resolveRequiredTags(
   query: string,
   selectedTag: string | null,
 ): string[] {
-  const { tags } = parseSearchQuery(query)
-  if (tags.length > 0) return tags
+  const { filters } = parseSearchQuery(query)
+  if (filters.tags.length > 0) return filters.tags
   if (selectedTag) return [selectedTag]
   return []
 }
@@ -387,8 +389,8 @@ export function resolveQuickSearchRows(
 
     if (requiredTags.length > 0) {
       const tagged = items.filter((item) => itemHasAllTags(item, requiredTags))
-      const { text } = parseSearchQuery(searchQuery)
-      if (!text) {
+      const { textQuery } = parseSearchQuery(searchQuery)
+      if (!textQuery) {
         return toMemoryRows(
           sortByNewest(tagged)
             .slice(0, maxResults)
@@ -496,8 +498,8 @@ export function memoryRowSnippetQuery(
   query: string,
 ): string {
   if (context !== 'tags') return query
-  const { text } = parseSearchQuery(query)
-  return text || query
+  const { textQuery } = parseSearchQuery(query)
+  return textQuery || query
 }
 
 export function quickSearchIsSearchResults(

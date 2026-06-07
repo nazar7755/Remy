@@ -89,7 +89,7 @@ flowchart LR
 - **`useFileScanner`**: Polls enabled default folders (Downloads, Desktop, Documents) plus user-added custom watch folders every 5s; polls clipboard every 2s when running in Tauri. Merges file + clipboard items into one timeline. After each file scan, asynchronously restores cached index text from disk (non-blocking UI). Exposes `indexFile` for manual and background indexing.
 - **`useBackgroundIndexing`**: After initial UI render (~2s), enqueues indexable files with `indexStatus === 'idle'` and processes them **one at a time** via `indexFile`. TXT/DOCX: 5s between jobs, max 10MB. **OCR image indexing is postponed** (`OCR_INDEXING_ENABLED = false` in `src/lib/ocrFeature.ts` and `ocr_engine.rs`) — no OCR on startup, scan, or background queue. **PDF is off by default** — separate Settings toggle with max size (default 5MB), delay (default 10s), 60s Rust extraction timeout, and panic isolation. Failed PDF jobs get `indexStatus === 'error'` and are not retried in the same session. Queue status shown in the sidebar and Settings.
 - **`FileScanner` + adapters**: `TauriFileSystemAdapter` (production) or `MockFileSystemAdapter` (Vite-only browser dev).
-- **`contentSearch`**: Client-side filter by name, path, extension, type, source, indexed/plain text, and **`tag:`** filters (e.g. `tag:crypto`, `ethereum tag:crypto`).
+- **`contentSearch`**: Client-side search via `parseSearchQuery()` — splits input into **`textQuery`** (free text) and **`filters`** (operators). Operators: **`tag:name`**, **`type:pdf|docx|txt|image|clipboard`**, **`source:downloads|desktop|documents|clipboard|favorites`** (plus custom folder names). Combined queries supported (e.g. `history type:docx`, `invoice type:pdf source:downloads`, `tag:edu type:docx`, `discord source:clipboard`). Filters apply with AND; multiple values of the same operator use OR. Works in Timeline, global header search, Favorites, Indexed, and Quick Search overlay.
 - **`quickSearchRecentActivity`**: Builds Recent Activity sections for Quick Search (Recent Files, Recent Clipboard, Favorites); refreshed on overlay open.
 - **`quickSearchContext`**: Context chips (**All**, **Recent**, **Clipboard**, **Favorites**, **Tags**) under the overlay search input; each mode scopes browse and search (`resolveQuickSearchRows`). **All** uses live union of files, clipboard, favorites, and tag pills (not a stale snapshot). **Recent** shows recent files + clipboard only. Typing **`tag`**, **`tag:`**, **`tag:e`**, **`#`**, or **`#e`** opens **tag autocomplete** (not full-text search); lists saved tags with memory counts (`#edu · 3 memories`); ↑↓ navigate, Enter or click fills `tag:name` and filters to tagged memories. Esc hides overlay via window-level capture handler.
 - **Navigation**: `Timeline`, `Favorites`, `Indexed`, and `Settings` are implemented; `Search` is not built yet.
@@ -109,7 +109,7 @@ flowchart LR
 | `register_watched_folder_scopes` | Extend asset-protocol scope for thumbnails in watched folders |
 | `open_file_path` / `reveal_file_path` | OS open/reveal for any watched path (including custom folders) |
 | `index_file_content` | Extract text from `.txt`, `.pdf`, `.docx` (max ~200k chars). OCR images disabled at compile-time flag. PDF runs in an isolated thread with **60s timeout** and **`catch_unwind`**. |
-| `poll_clipboard` / `get_clipboard_entries` | Track text clipboard (dedupe window 30s, max 500 entries); persisted to SQLite |
+| `poll_clipboard` / `get_clipboard_entries` | Track text clipboard; **daily normalized dedupe** (one entry per unique text per local calendar day, case-sensitive); max 500 entries; persisted to SQLite |
 | `lookup_file_index_cache` | Batch restore cached index text for scanned paths (startup hydration) |
 | `hydrate_clipboard_history` | Reload clipboard rows from disk into memory (optional; also runs at app setup) |
 | `get_app_settings` / `save_app_settings` | Read/write user preferences (JSON in `app_settings`, includes `custom_watched_folders`) |
@@ -151,7 +151,7 @@ Background capture (file poll, clipboard poll, indexing queue) stays in the Reac
 |-------|----------|----------|
 | **SQLite** (`rusqlite`, bundled) | `{data_local_dir}/com.remy.app/remy.sqlite` | `clipboard_entries`, `file_index_cache`, `favorites`, `tags`, `memory_tags`, `app_settings` |
 
-- **Clipboard**: Saved after each successful poll; restored into `ClipboardMonitor` on startup (dedupe state seeded from newest entry).
+- **Clipboard**: Saved after each successful poll; text **normalized** (trim + collapse whitespace) before save; **deduplicated per calendar day** — same normalized text on the same local day does not create a new row (existing history is not deleted); restored into `ClipboardMonitor` on startup.
 - **Index cache**: Keyed by `file_path`; validated with `file_mtime_ms` + `file_size` so changed files are re-indexed on demand.
 - **Indexed content source of truth** (read this when debugging clear/search/indexed views):
   - **Persistent store (Tauri)**: SQLite table `file_index_cache` — columns `file_path`, `content`, `file_mtime_ms`, `file_size`, `indexed_at_ms`. Written by `index_file_content`; wiped by `clear_indexed_content` or per-file `clear_file_index`. **Not** stored in `localStorage`.
@@ -188,7 +188,7 @@ Unified shape for files and clipboard snippets:
 - **First-launch onboarding**: one-time modal on pristine install (Scan now / Add Folder); Timeline layout unchanged after dismiss
 - **Empty states**: Shared `EmptyState` on Timeline (“No memories yet” + Add Folder / Scan now), Favorites, and Indexed; item-count footers hidden when lists are empty. Timeline layout is search → toolbar → content only (no inline onboarding card).
 - Real folder scanning on macOS/Windows/Linux (via Tauri)
-- Clipboard text capture with deduplication (persisted across restarts)
+- Clipboard text capture with **daily normalized deduplication** (one memory per unique text per day; case-sensitive; max 500 entries)
 - Indexed file text cache on disk (skip re-extraction when file unchanged)
 - **Timeline**: **Folders** row (All / default folders / custom folders / + Add Folder) filters the feed; type, view, and sort controls below; image files show 64×64 thumbnails when running in Tauri
 - **`useWatchedFolders`**: Add/remove custom watch folders from Timeline (native folder picker in Tauri); persists via `useSettings`
@@ -231,10 +231,12 @@ Shipped in this development session (commits `734fa86` … `ea2ad04`):
 | Tags system (SQLite, details panel, Timeline filter) | ✅ |
 | Tag search (`tag:xyz`) | ✅ |
 | Tag autocomplete in overlay (`tag`, `tag:`, `#` triggers) | ✅ |
+| Search operators (`tag:`, `type:`, `source:`) | ✅ |
+| Clipboard daily dedupe + normalization | ✅ |
 | OCR rollback (`OCR_INDEXING_ENABLED = false`) | ✅ |
 | Timeline/Details scroll experiment | ⏪ Reverted for stability |
 
-**Tag autocomplete (latest):** `parseQuickSearchTagAutocomplete` + `buildTagAutocompleteRows` in `quickSearchContext.ts`; suggestion UI in `QuickSearchOverlay.tsx`. Triggers: `tag`, `tag:`, `tag:name`, `#`, `#name`. Counts from `tagUsageFromAssignments`. Selection fills `tag:name` and filters overlay results.
+**Search operators + clipboard dedupe (latest):** `parseSearchQuery()` adds `type:` and `source:` filters alongside `tag:`; combined text queries in Timeline, header, overlay, Favorites, Indexed. `clipboard_monitor.rs` normalizes clipboard text and skips duplicates on the same local calendar day (`Clipboard duplicate skipped` log); browser mock mirrors rules in `clipboardNormalize.ts`.
 
 **Modified areas (88 files):** `src/components/` (Timeline toolbar, overlay, tags, onboarding, empty states), `src/hooks/`, `src/services/`, `src/lib/` (`contentSearch`, `quickSearchContext`, `tags`), `src-tauri/src/` (tray, background mode, launch at login, global hotkey, quick search, OCR flag), persistence (tags tables).
 
@@ -305,12 +307,20 @@ OCR code remains in the repo (`ocr_engine.rs`, `src/lib/ocrFeature.ts`) but is *
 3. **Remove** — Click × on a tag pill in Details; item updates immediately.
 4. **Persistence** — Quit and relaunch (`npm run tauri:dev` or browser with localStorage mock). Tags remain on the same items.
 5. **Rescan / reindex** — Run **Rescan** or reindex a tagged file. Tags stay attached (stored by stable `memory_id`, not index cache).
-6. **Search** — Timeline search: `tag:crypto` filters to tagged items; `ethereum tag:crypto` combines text + tag filter.
+6. **Search** — Timeline search: `tag:crypto` filters to tagged items; `history type:docx` combines text + type; `source:downloads type:pdf` filters by source and type; plain text unchanged.
 7. **Quick Search tag autocomplete** — `Cmd + Shift + Space`, then type `tag`, `tag:`, `tag:e`, `#`, or `#e`; suggestions show `#name · N memories`; Enter or click fills `tag:name` and lists tagged items; `tag:important` still filters directly.
-8. **Quick Search tag search** — type `tag:important` (or select from autocomplete); same filter rules as Timeline search.
-8. **Timeline filter** — When tags exist, a **Tags** row appears under Folders (All + top tags). Click `#crypto` to filter the feed.
-9. **Favorites independence** — Star an item with tags; remove tags — favorite status unchanged.
-10. **Settings** — Settings → Statistics shows **Tag count** and **Most used tags** list.
+8. **Quick Search operators** — same `tag:` / `type:` / `source:` syntax as Timeline; e.g. `invoice type:pdf source:downloads`.
+9. **Timeline filter** — When tags exist, a **Tags** row appears under Folders (All + top tags). Click `#crypto` to filter the feed.
+10. **Favorites independence** — Star an item with tags; remove tags — favorite status unchanged.
+11. **Settings** — Settings → Statistics shows **Tag count** and **Most used tags** list.
+
+### Testing clipboard deduplication (Tauri or browser mock)
+
+1. Copy the same text twice on the same day → only one Timeline clipboard entry.
+2. Copy text with extra spaces/newlines → treated as duplicate of normalized form.
+3. Copy the same text on a different calendar day → new entry allowed.
+4. Terminal may show `Clipboard duplicate skipped` when a same-day re-copy is detected after clipboard changed away and back.
+5. Existing duplicate rows from before this change are **not** auto-deleted.
 
 ## Explicit non-goals (for now)
 
