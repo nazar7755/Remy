@@ -57,6 +57,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 
 - [x] Content indexing workflow — Index / Reindex / Clear index in details panel; status + char count + timestamp; dedicated Indexed sidebar page; Settings index statistics
 - [x] PDF background indexing safety — off by default; isolated Rust extraction with timeout/panic guard; configurable max size and inter-file delay; failures marked `error` without retry in session
+- [x] Indexing failure cache — persist failed extractions in `file_index_failures`; quiet dev logs; skip retries until mtime/size changes; user-facing Details message
 - [ ] Index `xlsx` / `csv` text where practical
 - [x] Image thumbnails in cards (png/jpg/jpeg/webp; lazy 64×64 via Tauri asset protocol + `convertFileSrc`)
 - [ ] **OCR image indexing (Phase 1)** — *postponed* — prototype shipped (`ocrs`, `file_index_cache` integration) but disabled (`OCR_INDEXING_ENABLED = false`) due to UI lag; needs safer worker/background process before re-enable

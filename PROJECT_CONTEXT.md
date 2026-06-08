@@ -109,9 +109,10 @@ flowchart LR
 | `scan_all_memory_folders` | List supported files in enabled default folders plus `custom_watched_folders` from settings |
 | `register_watched_folder_scopes` | Extend asset-protocol scope for thumbnails in watched folders |
 | `open_file_path` / `reveal_file_path` | OS open/reveal for any watched path (including custom folders) |
-| `index_file_content` | Extract text from `.txt`, `.pdf`, `.docx` (max ~200k chars). OCR images disabled at compile-time flag. PDF runs in an isolated thread with **60s timeout** and **`catch_unwind`**. |
+| `index_file_content` | Extract text from `.txt`, `.pdf`, `.docx` (max ~200k chars). OCR images disabled at compile-time flag. PDF runs in an isolated thread with **60s timeout**, **`catch_unwind`**, and suppressed panic hook. Expected failures are stored in `file_index_failures` and return a user-facing message (no terminal spam). |
 | `poll_clipboard` / `get_clipboard_entries` | Track text clipboard; **daily normalized dedupe** (one entry per unique text per local calendar day, case-sensitive); max 500 entries; persisted to SQLite |
 | `lookup_file_index_cache` | Batch restore cached index text for scanned paths (startup hydration) |
+| `lookup_file_index_failures` | Batch restore persisted index failures for scanned paths (skip re-index unless mtime/size changed) |
 | `hydrate_clipboard_history` | Reload clipboard rows from disk into memory (optional; also runs at app setup) |
 | `get_app_settings` / `save_app_settings` | Read/write user preferences (JSON in `app_settings`, includes `custom_watched_folders`) |
 | `get_memory_statistics` | Clipboard count, indexed file count, total indexed characters (SQLite) |
@@ -151,16 +152,16 @@ Background capture (file poll, clipboard poll, indexing queue) stays in the Reac
 
 | Store | Location | Contents |
 |-------|----------|----------|
-| **SQLite** (`rusqlite`, bundled) | `{data_local_dir}/com.remy.app/remy.sqlite` | `clipboard_entries`, `file_index_cache`, `favorites`, `tags`, `memory_tags`, `saved_searches`, `app_settings` |
+| **SQLite** (`rusqlite`, bundled) | `{data_local_dir}/com.remy.app/remy.sqlite` | `clipboard_entries`, `file_index_cache`, `file_index_failures`, `favorites`, `tags`, `memory_tags`, `saved_searches`, `app_settings` |
 
 - **Clipboard**: Saved after each successful poll; text **normalized** (trim + collapse whitespace) before save; **deduplicated per calendar day** — same normalized text on the same local day does not create a new row (existing history is not deleted); restored into `ClipboardMonitor` on startup.
 - **Index cache**: Keyed by `file_path`; validated with `file_mtime_ms` + `file_size` so changed files are re-indexed on demand.
 - **Indexed content source of truth** (read this when debugging clear/search/indexed views):
   - **Persistent store (Tauri)**: SQLite table `file_index_cache` — columns `file_path`, `content`, `file_mtime_ms`, `file_size`, `indexed_at_ms`. Written by `index_file_content`; wiped by `clear_indexed_content` or per-file `clear_file_index`. **Not** stored in `localStorage`.
   - **Runtime store (UI)**: React state `fileItems` in `useFileScanner`, merged into `items` (files + clipboard). Each file’s `content`, `indexStatus`, `indexedCharCount`, and `indexedAt` fields are what Timeline, Memories, Search, and Indexed read.
-  - **Hydration path**: After each folder scan, `lookup_file_index_cache` loads SQLite rows into `fileItems` via `applyIndexCache`.
+  - **Hydration path**: After each folder scan, `lookup_file_index_cache` + `lookup_file_index_failures` load SQLite rows into `fileItems` via `applyIndexCache` / `applyIndexFailures`.
   - **Indexed page filter**: `resolveIndexedItems(items)` → `isIndexedFile(item)` requires `indexStatus === 'indexed'` **and** non-empty `content`. Same `items` array powers Timeline/Memories search via `contentSearch.ts`.
-  - **Failed indexing**: `indexStatus === 'error'` with `indexError` message on the memory item (UI label: Failed). Background queue skips non-`idle` files; attempted paths are remembered for the session so failures are not retried automatically.
+  - **Failed indexing**: `indexStatus === 'error'` with user-facing `indexError` (`Indexing failed: unsupported or corrupted file`). Internal reasons live in `file_index_failures` (`file_path`, `extension`, `failure_reason`, `file_mtime_ms`, `file_size`, `failed_at_ms`). Background queue skips non-`idle` files; persisted failures skip re-index on later launches until the file changes; manual Index on a failed file forces retry.
 - **Local-first only** — no network, no cloud APIs.
 - **Settings**: Single row `app_settings` key `app_settings` stores JSON (`scan_*`, `custom_watched_folders`, poll intervals, `clipboard_enabled`, `background_indexing_enabled`, `background_index_scope`, `background_pdf_indexing_enabled`, `background_pdf_max_size_mb`, `background_pdf_delay_sec`, `ocr_image_indexing_enabled`, `launch_at_login`, `run_in_background_when_closed`). Defaults seeded on first DB open. Meta flag `background_close_notification_shown` tracks the one-time hide notification.
 - **Startup**: Clipboard hydrate runs in Tauri `setup` (fast SQLite read). Index cache hydrate runs in the frontend after the first folder scan via `lookup_file_index_cache` (async, does not block the initial render). Background indexing queue starts ~200ms after first paint (does not block startup).

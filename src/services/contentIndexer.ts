@@ -12,6 +12,23 @@ import {
 } from '../types/memoryItem'
 import { mockContentForFile } from './fileScanner/mockContent'
 
+export const INDEXING_FAILED_USER_MESSAGE =
+  'Indexing failed: unsupported or corrupted file'
+
+/** Map Rust/timeout/internal errors to a safe Details-panel message. */
+export function toUserFacingIndexError(message: string): string {
+  if (
+    message.startsWith('Image exceeds maximum size') ||
+    message.startsWith('PDF exceeds maximum size')
+  ) {
+    return message
+  }
+  if (message === 'No extractable text found in file') {
+    return message
+  }
+  return INDEXING_FAILED_USER_MESSAGE
+}
+
 export async function indexFileContent(
   filePath: string,
   fileName: string,

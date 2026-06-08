@@ -276,13 +276,9 @@ export function useBackgroundIndexing(
             skipWithError: `PDF exceeds maximum size (${activeSettings.backgroundPdfMaxSizeMb} MB)`,
           })
         } else {
-          console.log('PDF indexing started:', item.fileName, nextPath)
           const outcome = await indexFileRef.current(nextPath, { background: true })
-          if (outcome === 'indexed') {
-            console.log('PDF indexing completed:', item.fileName)
-          } else if (outcome === 'error') {
+          if (import.meta.env.DEV && outcome === 'error') {
             console.log('PDF indexing failed:', item.fileName)
-            console.log('Continuing queue after PDF failure')
           }
         }
         attemptedPathsRef.current.add(normalized)
@@ -296,9 +292,8 @@ export function useBackgroundIndexing(
       console.warn('[Remy] Background index failed, continuing queue', err)
       if (isOcrImage) {
         console.log('OCR failed:', item.fileName, err)
-      } else if (isPdf) {
-        console.log('PDF indexing failed:', item.fileName, err)
-        console.log('Continuing queue after PDF failure')
+      } else if (isPdf && import.meta.env.DEV) {
+        console.log('PDF indexing failed:', item.fileName)
       }
       attemptedPathsRef.current.add(normalized)
     } finally {

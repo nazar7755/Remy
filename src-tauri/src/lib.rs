@@ -90,7 +90,7 @@ pub fn run() {
                 quick_search::attach_window_handler(&window);
             }
             if let Err(err) = tray::setup_tray(&app.handle()) {
-                eprintln!("failed to create tray icon: {err}");
+                eprintln!("TRAY SETUP FAILED: {err}");
             }
             global_hotkey::setup(&app.handle());
             Ok(())
@@ -107,6 +107,7 @@ pub fn run() {
             commands::file_actions::reveal_file_path,
             commands::content_index::index_file_content,
             commands::content_index::lookup_file_index_cache,
+            commands::content_index::lookup_file_index_failures,
             commands::content_index::clear_file_index,
             commands::clipboard::poll_clipboard,
             commands::clipboard::get_clipboard_entries,

@@ -22,6 +22,15 @@ pub struct FileIndexCacheDto {
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
+pub struct FileIndexFailureDto {
+    pub file_path: String,
+    pub extension: String,
+    pub failure_reason: String,
+    pub failed_at_ms: u64,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct MemoryStatisticsDto {
     pub clipboard_entries: u64,
     pub indexed_files: u64,
@@ -111,6 +120,15 @@ impl RemyStore {
                 file_mtime_ms INTEGER NOT NULL,
                 file_size INTEGER NOT NULL,
                 indexed_at_ms INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS file_index_failures (
+                file_path TEXT PRIMARY KEY NOT NULL,
+                extension TEXT NOT NULL,
+                failure_reason TEXT NOT NULL,
+                file_mtime_ms INTEGER NOT NULL,
+                file_size INTEGER NOT NULL,
+                failed_at_ms INTEGER NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS app_settings (
@@ -571,6 +589,8 @@ impl RemyStore {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM file_index_cache", [])
             .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM file_index_failures", [])
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -613,7 +633,8 @@ impl RemyStore {
     }
 
     pub fn clear_file_index(&self, file_path: &str) -> Result<(), String> {
-        self.delete_file_index(file_path)
+        self.delete_file_index(file_path)?;
+        self.delete_file_index_failure(file_path)
     }
 
     fn database_path() -> Result<PathBuf, String> {
@@ -768,6 +789,121 @@ impl RemyStore {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
             "DELETE FROM file_index_cache WHERE file_path = ?1",
+            params![file_path],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn save_file_index_failure(
+        &self,
+        file_path: &str,
+        extension: &str,
+        failure_reason: &str,
+        file_mtime_ms: u64,
+        file_size: u64,
+    ) -> Result<(), String> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO file_index_failures
+                (file_path, extension, failure_reason, file_mtime_ms, file_size, failed_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(file_path) DO UPDATE SET
+                extension = excluded.extension,
+                failure_reason = excluded.failure_reason,
+                file_mtime_ms = excluded.file_mtime_ms,
+                file_size = excluded.file_size,
+                failed_at_ms = excluded.failed_at_ms",
+            params![
+                file_path,
+                extension,
+                failure_reason,
+                file_mtime_ms as i64,
+                file_size as i64,
+                now as i64
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn lookup_file_index_failure(
+        &self,
+        file_path: &str,
+    ) -> Result<Option<FileIndexFailureDto>, String> {
+        let path = Path::new(file_path);
+        if !path.is_file() {
+            let _ = self.delete_file_index_failure(file_path);
+            return Ok(None);
+        }
+
+        let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+        let (mtime_ms, size) = file_metadata_fields(&meta)?;
+
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let cached: Option<(String, String, i64, i64, i64)> = conn
+            .query_row(
+                "SELECT extension, failure_reason, file_mtime_ms, file_size, failed_at_ms
+                 FROM file_index_failures
+                 WHERE file_path = ?1",
+                params![file_path],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .ok();
+
+        let Some((extension, failure_reason, cached_mtime, cached_size, failed_at_ms)) = cached
+        else {
+            return Ok(None);
+        };
+
+        if cached_mtime == mtime_ms as i64 && cached_size == size as i64 {
+            return Ok(Some(FileIndexFailureDto {
+                file_path: file_path.to_string(),
+                extension,
+                failure_reason,
+                failed_at_ms: failed_at_ms.max(0) as u64,
+            }));
+        }
+
+        drop(conn);
+        self.delete_file_index_failure(file_path)?;
+        Ok(None)
+    }
+
+    pub fn lookup_file_index_failures(
+        &self,
+        file_paths: Vec<String>,
+    ) -> Result<Vec<FileIndexFailureDto>, String> {
+        let mut hits = Vec::new();
+        for path in file_paths {
+            if let Some(entry) = self.lookup_file_index_failure(&path)? {
+                hits.push(entry);
+            }
+        }
+        Ok(hits)
+    }
+
+    pub fn clear_file_index_failure(&self, file_path: &str) -> Result<(), String> {
+        self.delete_file_index_failure(file_path)
+    }
+
+    fn delete_file_index_failure(&self, file_path: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM file_index_failures WHERE file_path = ?1",
             params![file_path],
         )
         .map_err(|e| e.to_string())?;

@@ -18,13 +18,19 @@ import {
   indexFileContent,
   ocrIndexTimeoutMs,
   pdfIndexTimeoutMs,
+  toUserFacingIndexError,
 } from '../services/contentIndexer'
 import type { BackgroundIndexOutcome } from '../services/indexingQueue'
 import {
   emptyIndexMetadata,
   indexMetadataFromContent,
 } from '../lib/indexMetadata'
-import { applyIndexCache, lookupIndexCache } from '../services/indexCache'
+import {
+  applyIndexCache,
+  applyIndexFailures,
+  lookupIndexCache,
+  lookupIndexFailures,
+} from '../services/indexCache'
 import { mergeScanResults } from '../services/fileScanner/mergeScanResults'
 import * as fileScannerService from '../services/fileScanner'
 import type { AppSettings } from '../types/settings'
@@ -80,7 +86,7 @@ function applyIndexResult(
       return {
         ...item,
         indexStatus: 'error',
-        indexError: error,
+        indexError: toUserFacingIndexError(error),
         ...emptyIndexMetadata(),
       }
     }
@@ -263,9 +269,7 @@ export function useFileScanner(
 
       if (indexingPathsRef.current.has(trimmedPath)) return 'skipped'
 
-      if (isPdf) {
-        console.log('PDF indexing started:', target?.fileName ?? trimmedPath, trimmedPath)
-      } else if (isOcrImage && !isBackground) {
+      if (isOcrImage && !isBackground) {
         console.log('OCR indexing image:', target?.fileName ?? trimmedPath)
       } else if (!isBackground) {
         console.log('Indexing started for path:', trimmedPath)
@@ -281,12 +285,16 @@ export function useFileScanner(
         setFileItems((prev) => markIndexing(prev, trimmedPath))
       }
 
+      const force =
+        options?.force ??
+        (!isBackground && target?.indexStatus === 'error')
+
       try {
         const content = await indexFileContent(
           trimmedPath,
           target?.fileName ?? trimmedPath.split(/[/\\]/).pop() ?? trimmedPath,
           {
-            force: options?.force,
+            force,
             timeoutMs: isPdf
               ? pdfIndexTimeoutMs()
               : isOcrImage
@@ -318,13 +326,7 @@ export function useFileScanner(
           return next
         })
 
-        if (isPdf) {
-          if (outcome === 'indexed') {
-            console.log('PDF indexing completed:', target?.fileName ?? trimmedPath)
-          } else {
-            console.log('PDF indexing failed:', target?.fileName ?? trimmedPath)
-          }
-        } else if (isOcrImage) {
+        if (isOcrImage) {
           if (outcome === 'indexed') {
             console.log('OCR complete:', target?.fileName ?? trimmedPath)
           } else if (outcome === 'error') {
@@ -339,12 +341,15 @@ export function useFileScanner(
 
         return outcome
       } catch (err) {
-        const message =
+        const raw =
           err instanceof Error ? err.message : 'Content indexing failed'
-        if (isPdf) {
-          console.log('PDF indexing failed:', target?.fileName ?? trimmedPath, message)
-        } else if (!isBackground) {
-          console.error('Tauri indexing result:', { path: trimmedPath, error: message })
+        const message = toUserFacingIndexError(raw)
+        if (import.meta.env.DEV && isPdf) {
+          console.log('PDF indexing failed:', target?.fileName ?? trimmedPath)
+        } else if (!isBackground && import.meta.env.DEV) {
+          console.log('Indexing failed:', trimmedPath)
+        }
+        if (!isBackground) {
           setIndexNotice(message)
         }
         setFileItems((prev) =>
@@ -412,10 +417,21 @@ export function useFileScanner(
 
   const hydrateIndexCache = useCallback(async (scanned: MemoryItem[]) => {
     try {
-      const cacheByPath = await lookupIndexCache(scanned)
-      if (cacheByPath.size === 0) return
+      const [cacheByPath, failuresByPath] = await Promise.all([
+        lookupIndexCache(scanned),
+        lookupIndexFailures(scanned),
+      ])
 
-      setFileItems((prev) => applyIndexCache(prev, cacheByPath))
+      if (cacheByPath.size === 0 && failuresByPath.size === 0) return
+
+      setFileItems((prev) => {
+        const withCache = applyIndexCache(prev, cacheByPath)
+        return applyIndexFailures(withCache, failuresByPath)
+      })
+
+      if (import.meta.env.DEV && failuresByPath.size > 0) {
+        console.log(`Indexing skipped ${failuresByPath.size} failed files`)
+      }
     } catch (err) {
       console.warn('Failed to restore index cache', err)
     }
