@@ -9,86 +9,94 @@
 </p>
 
 <p align="center">
-  A local-first desktop app that passively captures what you touch on your computer,<br />
+  A local-first macOS desktop memory app that passively captures what you touch on your computer,<br />
   keeps it searchable on your machine, and never ships your data to the cloud.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version 0.1.0" />
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platforms" />
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="macOS" />
+  <img src="https://img.shields.io/badge/status-MVP%20%2F%20beta-orange" alt="MVP / beta" />
   <img src="https://img.shields.io/badge/license-TBD-lightgrey" alt="License" />
-  <img src="https://img.shields.io/badge/status-early%20prototype-orange" alt="Early prototype" />
 </p>
 
 ---
 
-## Table of contents
+## What is Remy?
 
-- [Description](#description)
-- [Features](#features)
-- [Screenshots](#screenshots)
-- [Tech stack](#tech-stack)
-- [Architecture overview](#architecture-overview)
-- [Installation](#installation)
-- [Running locally](#running-locally)
-- [Roadmap](#roadmap)
-- [Current status](#current-status)
-- [Privacy-first philosophy](#privacy-first-philosophy)
-- [Contributing](#contributing)
-- [License](#license)
+**Remy** is a local-first macOS desktop memory app. It watches your folders and clipboard, merges everything into one searchable timeline, and extracts text from supported documents so you can find that PDF, snippet, or file path again — without uploading anything anywhere.
+
+Built with **Tauri 2**, **React**, **TypeScript**, **Tailwind CSS**, and **Rust**, with all user data stored in **local SQLite persistence**.
+
+This is an **active MVP / beta**: core workflows are usable end-to-end, but polish and advanced features are still in progress.
 
 ---
 
-## Description
+## Key features
 
-**Remy** is a desktop-native “second memory” for your workflow. It watches standard folders (Downloads, Desktop, Documents) and your clipboard, merges everything into one searchable timeline, and extracts text from supported documents so you can find that PDF, snippet, or file path again—without uploading anything anywhere.
+### Memory & browse
 
-Built for knowledge workers, researchers, and anyone tired of digging through Finder or scrollback. Remy is **local-first**, **passive**, and **searchable** by design.
+- **Timeline** — unified chronological feed of files and clipboard entries
+- **Memories** — browse all items in list or grid with filters and sort
+- **Favorites** — pin items across sources; persisted with snapshots
+- **Indexed** — dedicated page for files with extracted text and index metadata
+- **Tags** — assign custom tags to any memory; filter Timeline by tag; survives rescans
+- **File scanning** — passive polling of Downloads, Desktop, and Documents
+- **Custom watched folders** — add any folder from the Timeline toolbar
+- **Clipboard memory** — text clipboard history with **daily deduplication** (max 500 entries)
+- **Image thumbnails** — 64×64 previews for png / jpg / jpeg / webp
 
----
+### Search
 
-## Features
+- **Full-text search** — name, path, extension, source, tags, and indexed document text
+- **Search operators** — `tag:`, `type:`, `source:` combinable with free text
+- **Saved Searches** — named shortcuts in the sidebar for frequent queries
+- **Tag autocomplete** — type `tag:`, `#`, or a prefix to browse tags with usage counts
+- **Quick Search Overlay** — compact Spotlight-style window from anywhere on your Mac
+- **Global hotkey** — `Cmd + Shift + Space` opens the overlay
+- **Overlay contexts** — **All**, **Recent**, **Clipboard**, **Favorites**, **Tags**
 
-| Area | What you get |
-|------|----------------|
-| **Unified timeline** | Files and clipboard entries in one chronological feed with source filters |
-| **Passive capture** | Folder polling + clipboard monitoring—no “save to Remy” for every item |
-| **Full-text search** | Search by name, path, extension, source, and indexed document text |
-| **Content indexing** | On-demand extraction for `.txt`, `.pdf`, `.docx` with disk cache (mtime/size validation) |
-| **Memories browse** | List or grid view, type filters, six sort orders, detail panel |
-| **Favorites** | Pin items across sources; persisted in SQLite with snapshots |
-| **Indexed library** | Dedicated view of files with extracted text and index metadata |
-| **Desktop actions** | Open file, reveal in Finder/Explorer, copy path |
-| **Image previews** | 64×64 thumbnails for common image types (desktop build) |
-| **Settings & stats** | Folder toggles, poll intervals, clipboard privacy, clear data, live statistics |
-| **Dev-friendly** | Browser-only mock mode for UI work without the Rust shell |
+### Content indexing
+
+- **TXT / DOCX / PDF** — on-demand text extraction in Rust (max ~200k chars per file)
+- **Manual indexing** — Index / Reindex / Clear index from the Details panel
+- **Background queue** — optional automatic indexing (off by default)
+- **Local persistence** — indexed text and failures cached in SQLite; validated by mtime + size
+
+### Desktop actions
+
+- **Open File** — launch in default app
+- **Reveal in Finder** — show file location
+- **Copy Path** — copy full path to clipboard
+- **Details panel** — preview, index status, tags, and actions
+
+### macOS integration
+
+- **Menu bar mode** — tray icon with Open, Scan now, indexing toggle, stats, Quit
+- **Background mode** — hide window on close; scanning and indexing keep running
+- **Launch at Login** — optional autostart with hidden window
+
+### Settings
+
+- Folder scan toggles, poll intervals, clipboard privacy
+- Background indexing scope and recovery actions
+- Live statistics (clipboard, indexed files, characters)
 
 ---
 
 ## Screenshots
 
-> Add captures under `docs/screenshots/` and uncomment the blocks below for your README on GitHub.
+> Add captures under `docs/screenshots/` and uncomment when ready.
 
-<!-- ### Timeline -->
+<!-- ![Timeline](docs/screenshots/timeline.png) -->
+<!-- ![Quick Search](docs/screenshots/quick-search.png) -->
+<!-- ![Indexed](docs/screenshots/indexed.png) -->
+<!-- ![Settings](docs/screenshots/settings.png) -->
 
-<!-- ![Remy timeline — unified file and clipboard feed](docs/screenshots/timeline.png) -->
-
-<!-- ### Memories -->
-
-<!-- ![Memories browse view with filters and detail panel](docs/screenshots/memories.png) -->
-
-<!-- ### Indexed -->
-
-<!-- ![Indexed page showing extracted document text](docs/screenshots/indexed.png) -->
-
-<!-- ### Settings -->
-
-<!-- ![Settings — folders, clipboard, and privacy controls](docs/screenshots/settings.png) -->
-
-| View | Preview |
-|------|---------|
+| View | Path |
+|------|------|
 | Timeline | `docs/screenshots/timeline.png` |
-| Memories | `docs/screenshots/memories.png` |
+| Quick Search | `docs/screenshots/quick-search.png` |
 | Indexed | `docs/screenshots/indexed.png` |
 | Settings | `docs/screenshots/settings.png` |
 
@@ -98,74 +106,80 @@ Built for knowledge workers, researchers, and anyone tired of digging through Fi
 
 | Layer | Technologies |
 |-------|----------------|
-| **UI** | React 19, TypeScript, Tailwind CSS 4, Vite 8 |
-| **Desktop shell** | [Tauri 2](https://tauri.app/) (Rust) |
-| **Tauri plugins** | `tauri-plugin-fs`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager` |
-| **Rust libraries** | `pdf-extract`, `zip` + `quick-xml` (DOCX), `arboard`, `rusqlite` (bundled SQLite) |
-| **Persistence** | Local SQLite at `{data_local_dir}/com.remy.app/remy.sqlite` |
+| **Frontend** | React 19, TypeScript, Tailwind CSS 4, Vite 8 |
+| **Desktop shell** | Tauri 2 (Rust) |
+| **Tauri plugins** | `fs`, `opener`, `clipboard-manager`, `dialog`, `notification`, `autostart`, `global-shortcut` |
+| **Rust** | `pdf-extract`, `zip` + `quick-xml` (DOCX), `arboard`, `rusqlite` (bundled SQLite) |
+| **Local persistence** | SQLite at `~/Library/Application Support/com.remy.app/remy.sqlite` |
 
 ---
 
 ## Architecture overview
 
-Remy splits a React frontend from a thin Tauri/Rust backend. The UI talks to the shell through small `invoke` commands; adapters keep browser-only dev working with mock data.
+React UI ↔ Tauri `invoke` commands ↔ Rust backend ↔ SQLite.
 
 ```mermaid
 flowchart LR
-  subgraph UI["React (src/)"]
-    App --> useSettings
+  subgraph UI["React + TypeScript"]
     App --> useFileScanner
-    useFileScanner --> FileScanner
-    useFileScanner --> ClipboardService
-    FileMemoryTimeline --> ContentSearch
+    App --> useBackgroundIndexing
+    QuickSearch --> ContentSearch
   end
 
-  subgraph Rust["Tauri (src-tauri/)"]
+  subgraph Rust["Tauri 2 / Rust"]
     FS[file_scanner]
     CI[content_index]
     CB[clipboard]
+    Tray[tray + hotkey]
     DB[(remy.sqlite)]
   end
 
-  FileScanner -->|invoke| FS
-  FileScanner -->|invoke| CI
-  ClipboardService -->|invoke| CB
-  CB --> DB
+  useFileScanner -->|invoke| FS
+  useFileScanner -->|invoke| CI
+  useFileScanner -->|invoke| CB
   CI --> DB
-  useSettings --> DB
+  CB --> DB
+  Tray --> App
 ```
 
-### Repository layout
+1. **Scan** — poll enabled folders and clipboard
+2. **Hydrate** — restore index cache, failures, clipboard, favorites, tags from SQLite
+3. **Search** — client-side filter with operator parsing (`tag:`, `type:`, `source:`)
+4. **Index** — manual or background extraction; results cached locally
+
+See [PROJECT_CONTEXT.md](./PROJECT_CONTEXT.md) and [ARCHITECTURE.md](./ARCHITECTURE.md) for details.
+
+---
+
+## Search examples
 
 ```
-Remy/
-├── src/                 # React UI (components, hooks, services, lib)
-├── src-tauri/           # Rust: commands, persistence, clipboard monitor, indexer
-├── PROJECT_CONTEXT.md   # Contributor-oriented architecture notes
-├── ROADMAP.md           # Detailed phased roadmap
-└── README.md
+invoice type:pdf
+history type:docx source:downloads
+tag:edu type:docx
+discord source:clipboard
+type:image source:desktop
 ```
 
-### Data flow (high level)
+Tag autocomplete in Quick Search: type `tag`, `tag:`, `#`, or a prefix (`tag:e`, `#edu`) to pick a tag with memory counts.
 
-1. **Scan** — Poll enabled folders every few seconds; merge with clipboard poll results.
-2. **Hydrate** — Restore cached index text and clipboard history from SQLite on startup.
-3. **Search** — Client-side filter across metadata and indexed/plain text.
-4. **Index** — User-triggered (or future background) extraction in Rust; cache keyed by path + file stats.
+---
 
-For command-level detail, see [PROJECT_CONTEXT.md](./PROJECT_CONTEXT.md).
+## Privacy-first philosophy
+
+| Principle | In practice |
+|-----------|-------------|
+| **Local-first** | All data on your Mac — no cloud sync |
+| **No accounts** | No sign-up, no subscription, no remote database |
+| **No telemetry** | No analytics or cloud APIs in the core product |
+| **Transparent capture** | Configurable folder toggles and clear-data actions |
+| **Future AI is opt-in** | Semantic search would require explicit consent |
 
 ---
 
 ## Installation
 
-### Prerequisites
-
-- **Node.js** 20+ and **npm**
-- **Rust** toolchain ([rustup](https://rustup.rs/))
-- **Platform deps for Tauri** — see [Tauri prerequisites](https://tauri.app/start/prerequisites/) for macOS, Windows, or Linux
-
-### Clone and install dependencies
+**Prerequisites:** Node.js 20+, npm, Rust ([rustup](https://rustup.rs/)), macOS [Tauri prerequisites](https://tauri.app/start/prerequisites/)
 
 ```bash
 git clone https://github.com/nazar7755/Remy.git
@@ -173,108 +187,91 @@ cd Remy
 npm install
 ```
 
-The first `tauri dev` or `tauri build` will compile the Rust crate and may take several minutes.
-
 ---
 
 ## Running locally
 
-### Web UI only (mock data)
-
-Useful for frontend work without the desktop shell:
+**Browser mock (no Rust shell):**
 
 ```bash
 npm run dev
 ```
 
-Open the Vite dev server (default `http://localhost:5173`). Timeline data comes from `MockFileSystemAdapter`.
-
-### Full desktop app (recommended)
+**Full macOS app:**
 
 ```bash
 npm run tauri:dev
 ```
 
-### Production build
+**Lint / typecheck:**
+
+```bash
+npm run lint
+npm run build
+```
+
+---
+
+## Building the app
 
 ```bash
 npm run tauri:build
 ```
 
-Installers/artifacts are emitted under `src-tauri/target/release/bundle/` (platform-specific).
-
-### Lint
-
-```bash
-npm run lint
-```
-
----
-
-## Roadmap
-
-Remy is an **early prototype** (target **v0.1.0**). Work is organized in phases; the full checklist lives in [ROADMAP.md](./ROADMAP.md).
-
-| Phase | Focus | Status |
-|-------|--------|--------|
-| **0 — Foundation** | Shell, scan, clipboard, indexing, mock dev | ✅ Shipped |
-| **1 — Core completeness** | Memories, Favorites, Indexed, Settings, persistence | 🚧 In progress |
-| **2 — Broader capture** | Custom watch folders, screenshots, optional browser history | Planned |
-| **3 — Power user** | Global shortcut, tray, export, exclude lists, installers | Planned |
-| **4 — Intelligence (optional)** | On-device semantic search, summaries—opt-in only | Later |
-
-**Near-term priorities**
-
-- Dedicated **Search** experience (saved queries, grouping, keyboard focus)
-- Timeline UX: pagination, day grouping, background indexing queue
-- Ranked/fuzzy search beyond substring match
+Output: `src-tauri/target/release/bundle/` (`.app` on macOS).
 
 ---
 
 ## Current status
 
-| Dimension | State |
-|-----------|--------|
-| **Release** | v0.1.0 early prototype — not production-hardened |
-| **Platforms** | Tauri targets macOS, Windows, Linux; primary dev on macOS |
-| **Navigation** | Timeline, Memories, Favorites, Indexed, Settings — **Search** route exists but UI is not built yet |
-| **Capture** | Downloads, Desktop, Documents + clipboard text |
-| **Indexing** | Manual from detail panel; cache survives restarts |
-| **Cloud / accounts** | None — by design |
-| **AI / LLM** | Not integrated; optional future phase with explicit opt-in |
+| Area | State |
+|------|--------|
+| **Release** | v0.1.0 MVP / beta |
+| **Platform** | macOS-focused (other platforms untested) |
+| **OCR image indexing** | **Postponed / disabled** — prototype exists (`OCR_INDEXING_ENABLED = false`) but turned off due to performance issues |
+| **AI / semantic search** | **Planned, not implemented** — future opt-in phase with on-device embeddings |
+| **Accounts / subscriptions** | **Future business roadmap** — not part of the current app |
 
 ---
 
-## Privacy-first philosophy
+## Roadmap
 
-Remy is built on the premise that **your memory belongs on your machine**.
+| Phase | Focus |
+|-------|--------|
+| **0 — Foundation** | ✅ Shell, scan, clipboard, indexing |
+| **1 — Core** | 🚧 Tags, saved searches, overlay, tray, background mode (mostly shipped) |
+| **2 — Broader capture** | Screenshots, file watchers |
+| **3 — Power user** | Export, exclude lists, cross-platform installers |
+| **4 — Intelligence** | Semantic search, summaries (opt-in) |
+| **Business** | Accounts, subscriptions (not started) |
 
-| Principle | What it means in practice |
-|-----------|---------------------------|
-| **Local-first** | SQLite and index cache live under your OS app data directory. No sync service, no remote database. |
-| **No telemetry by default** | The architecture has no cloud APIs; network use is not part of the core product story. |
-| **Passive, transparent capture** | Standard folders and clipboard only—configurable toggles and clear-data actions in Settings. |
-| **You control retention** | Clear clipboard history or wipe indexed content from the app; clipboard capped at 500 entries. |
-| **Indexing is explicit** | Document text extraction runs when you index (or reindex)—not hidden upload pipelines. |
-| **Future intelligence is opt-in** | Semantic search or summaries (Phase 4) would require explicit user consent before any network or model call. |
+Full checklist: [ROADMAP.md](./ROADMAP.md)
 
-We treat privacy as a **product constraint**, not a marketing footnote. If a feature cannot be explained in one sentence on-device, it waits until it can.
+---
+
+## Known limitations
+
+- macOS-first development target
+- Folder **polling**, not native file system events
+- Substring search only — no fuzzy or ranked results yet
+- OCR disabled; image search is thumbnail/metadata only
+- No semantic / embedding search yet
+- No accounts, sync, or cloud features
+- Background PDF indexing off by default
 
 ---
 
 ## Contributing
 
-1. Read [PROJECT_CONTEXT.md](./PROJECT_CONTEXT.md) for architecture and conventions.
-2. Pick the next unchecked item in [ROADMAP.md](./ROADMAP.md).
-3. Match existing patterns: Tauri vs mock adapters, snake_case Rust DTOs → camelCase TypeScript.
-
-Issues and PRs welcome once the public repository is open.
+1. Read [PROJECT_CONTEXT.md](./PROJECT_CONTEXT.md)
+2. Pick an item from [ROADMAP.md](./ROADMAP.md)
+3. Match existing Tauri / mock adapter patterns
 
 ---
 
 ## License
 
-License to be determined. See repository settings or `LICENSE` when published.
+License to be determined.
 
 ---
 
