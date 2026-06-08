@@ -74,6 +74,15 @@ pub struct TagStatisticsDto {
     pub most_used: Vec<TagUsageDto>,
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SavedSearchDto {
+    pub id: String,
+    pub name: String,
+    pub query: String,
+    pub created_at_ms: u64,
+}
+
 impl RemyStore {
     pub fn open() -> Result<Self, String> {
         let path = Self::database_path()?;
@@ -133,6 +142,16 @@ impl RemyStore {
 
             CREATE INDEX IF NOT EXISTS idx_memory_tags_tag_name
                 ON memory_tags (tag_name);
+
+            CREATE TABLE IF NOT EXISTS saved_searches (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                query TEXT NOT NULL,
+                created_at_ms INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_saved_searches_created
+                ON saved_searches (created_at_ms DESC);
             ",
         )
         .map_err(|e| e.to_string())?;
@@ -408,6 +427,108 @@ impl RemyStore {
             tag_count,
             most_used,
         })
+    }
+
+    pub fn load_saved_searches(&self) -> Result<Vec<SavedSearchDto>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, query, created_at_ms
+                 FROM saved_searches
+                 ORDER BY created_at_ms DESC",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, name, query, created_at_ms) = row.map_err(|e| e.to_string())?;
+            out.push(SavedSearchDto {
+                id,
+                name,
+                query,
+                created_at_ms: created_at_ms.max(0) as u64,
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn create_saved_search(&self, name: &str, query: &str) -> Result<SavedSearchDto, String> {
+        let trimmed_name = name.trim();
+        let trimmed_query = query.trim();
+        if trimmed_name.is_empty() || trimmed_query.is_empty() {
+            return Err("Name and query are required".to_string());
+        }
+        if trimmed_name.len() > 64 {
+            return Err("Name must be 64 characters or fewer".to_string());
+        }
+        if trimmed_query.len() > 512 {
+            return Err("Query must be 512 characters or fewer".to_string());
+        }
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO saved_searches (id, name, query, created_at_ms)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![id, trimmed_name, trimmed_query, now as i64],
+        )
+        .map_err(|e| e.to_string())?;
+
+        Ok(SavedSearchDto {
+            id,
+            name: trimmed_name.to_string(),
+            query: trimmed_query.to_string(),
+            created_at_ms: now,
+        })
+    }
+
+    pub fn rename_saved_search(&self, id: &str, name: &str) -> Result<(), String> {
+        let trimmed_name = name.trim();
+        if trimmed_name.is_empty() {
+            return Err("Name is required".to_string());
+        }
+        if trimmed_name.len() > 64 {
+            return Err("Name must be 64 characters or fewer".to_string());
+        }
+
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let updated = conn
+            .execute(
+                "UPDATE saved_searches SET name = ?1 WHERE id = ?2",
+                params![trimmed_name, id],
+            )
+            .map_err(|e| e.to_string())?;
+        if updated == 0 {
+            return Err("Saved search not found".to_string());
+        }
+        Ok(())
+    }
+
+    pub fn delete_saved_search(&self, id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let deleted = conn
+            .execute("DELETE FROM saved_searches WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        if deleted == 0 {
+            return Err("Saved search not found".to_string());
+        }
+        Ok(())
     }
 
     pub fn set_favorite(

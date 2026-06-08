@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import type { NavSection } from '../types/memory'
+import type { SavedSearch } from '../types/savedSearch'
 import { IndexingQueueStatus } from './IndexingQueueStatus'
+import { SavedSearchesSection } from './SavedSearchesSection'
 import type { BackgroundIndexingState } from '../hooks/useBackgroundIndexing'
 import { isTauri } from '../lib/tauri'
 
@@ -58,12 +60,28 @@ interface SidebarProps {
   activeSection: NavSection
   onSectionChange: (section: NavSection) => void
   indexingQueue?: BackgroundIndexingState
+  savedSearches?: SavedSearch[]
+  savedSearchesLoading?: boolean
+  activeSearchQuery?: string
+  onSavedSearchSelect?: (query: string) => void
+  onSaveCurrentSearch?: () => void
+  onRenameSavedSearch?: (id: string, name: string) => void
+  onDeleteSavedSearch?: (id: string) => void
+  saveSearchEmptyHint?: string | null
 }
 
 export function Sidebar({
   activeSection,
   onSectionChange,
   indexingQueue,
+  savedSearches = [],
+  savedSearchesLoading = false,
+  activeSearchQuery = '',
+  onSavedSearchSelect,
+  onSaveCurrentSearch,
+  onRenameSavedSearch,
+  onDeleteSavedSearch,
+  saveSearchEmptyHint = null,
 }: SidebarProps) {
   return (
     <aside className="flex h-svh w-[220px] shrink-0 flex-col overflow-hidden border-r border-remy-border bg-remy-surface">
@@ -78,28 +96,46 @@ export function Sidebar({
         {navItems.map((item) => {
           const isActive = activeSection === item.id
           return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onSectionChange(item.id)}
-              className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors ${
-                isActive
-                  ? 'bg-remy-elevated font-medium text-remy-text'
-                  : 'text-remy-subtle hover:bg-remy-elevated/60 hover:text-remy-text'
-              }`}
-            >
-              <svg
-                className={`h-4 w-4 shrink-0 ${isActive ? 'text-remy-accent' : 'text-remy-muted'}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                aria-hidden
+            <div key={item.id}>
+              <button
+                type="button"
+                onClick={() => onSectionChange(item.id)}
+                className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors ${
+                  isActive
+                    ? 'bg-remy-elevated font-medium text-remy-text'
+                    : 'text-remy-subtle hover:bg-remy-elevated/60 hover:text-remy-text'
+                }`}
               >
-                {item.icon}
-              </svg>
-              {item.id}
-            </button>
+                <svg
+                  className={`h-4 w-4 shrink-0 ${isActive ? 'text-remy-accent' : 'text-remy-muted'}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                  aria-hidden
+                >
+                  {item.icon}
+                </svg>
+                {item.id}
+              </button>
+
+              {item.id === 'Indexed' &&
+                onSavedSearchSelect &&
+                onSaveCurrentSearch &&
+                onRenameSavedSearch &&
+                onDeleteSavedSearch && (
+                  <SavedSearchesSection
+                    searches={savedSearches}
+                    activeQuery={activeSearchQuery}
+                    loading={savedSearchesLoading}
+                    emptyHint={saveSearchEmptyHint}
+                    onSelect={onSavedSearchSelect}
+                    onSaveCurrent={onSaveCurrentSearch}
+                    onRename={onRenameSavedSearch}
+                    onDelete={onDeleteSavedSearch}
+                  />
+                )}
+            </div>
           )
         })}
       </nav>

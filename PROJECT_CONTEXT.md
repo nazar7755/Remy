@@ -92,11 +92,12 @@ flowchart LR
 - **`contentSearch`**: Client-side search via `parseSearchQuery()` — splits input into **`textQuery`** (free text) and **`filters`** (operators). Operators: **`tag:name`**, **`type:pdf|docx|txt|image|clipboard`**, **`source:downloads|desktop|documents|clipboard|favorites`** (plus custom folder names). Combined queries supported (e.g. `history type:docx`, `invoice type:pdf source:downloads`, `tag:edu type:docx`, `discord source:clipboard`). Filters apply with AND; multiple values of the same operator use OR. Works in Timeline, global header search, Favorites, Indexed, and Quick Search overlay.
 - **`quickSearchRecentActivity`**: Builds Recent Activity sections for Quick Search (Recent Files, Recent Clipboard, Favorites); refreshed on overlay open.
 - **`quickSearchContext`**: Context chips (**All**, **Recent**, **Clipboard**, **Favorites**, **Tags**) under the overlay search input; each mode scopes browse and search (`resolveQuickSearchRows`). **All** uses live union of files, clipboard, favorites, and tag pills (not a stale snapshot). **Recent** shows recent files + clipboard only. Typing **`tag`**, **`tag:`**, **`tag:e`**, **`#`**, or **`#e`** opens **tag autocomplete** (not full-text search); lists saved tags with memory counts (`#edu · 3 memories`); ↑↓ navigate, Enter or click fills `tag:name` and filters to tagged memories. Esc hides overlay via window-level capture handler.
-- **Navigation**: `Timeline`, `Favorites`, `Indexed`, and `Settings` are implemented; `Search` is not built yet.
+- **Navigation**: `Timeline`, `Favorites`, `Indexed`, and `Settings` are implemented; dedicated **Search** page is not built yet. **Saved Searches** live in the sidebar below Indexed — named shortcuts for frequent queries (`tag:edu`, `type:pdf`, etc.) with create / rename / delete.
 - **Onboarding & empty states**: True first launch (no files, no clipboard entries in SQLite, no favorites, scan/favorites loaded) opens a one-time **modal** (`OnboardingModal`). Dismissal or action (Scan now / Add Folder) sets `localStorage` flag `remy.onboardingCompleted` — never shown again. Timeline stays search + toolbar + content only (no inline welcome card). Section empty states share an `EmptyState` component. Dev: **Preview empty states** (`remy.previewEmptyStates`) and **Reset onboarding** in Settings → Developer.
 - **Indexed page**: Filtered view of live items with `indexStatus === 'indexed'` and extracted text (txt/pdf/docx from all scan sources); no source filters.
 - **`useFavorites`**: Independent favorites collection in SQLite (`favorites` table: `memory_id` + JSON snapshot per pin); `useFileScanner` marks live items with `isFavorite`; Favorites page uses `resolveFavoriteItems()` to merge live scan data with saved snapshots — no duplicate rows.
 - **`useTags`**: Independent tag assignments in SQLite (`tags` + `memory_tags` tables); keyed by stable `MemoryItem.id` (file path or `clipboard://…`); `useFileScanner` attaches `tags[]` to live items via `applyTagsToItems`; survives rescans/reindexing because tags are stored separately from scan/index cache.
+- **`useSavedSearches`**: Named search shortcuts (`name` + `query` + `createdAtMs`) persisted in SQLite (`saved_searches` table) or `localStorage` (`remy-saved-searches`) in browser mock. Sidebar section below Indexed: **+** opens `SaveSearchModal` (name + read-only query; Cancel / Save); empty query shows inline hint *Enter a search query first.* Click applies query to Timeline content search; hover **×** or right-click deletes; right-click rename. Reads current query from header or Timeline search bar.
 - **Memories page**: Database-style browse of all items (list/grid, type filters, sort, search); preferences (view mode, sort) persist in `localStorage`. Timeline remains the chronological activity feed with source filters unchanged.
 - **`useSettings`**: Loads/saves app preferences (default folder toggles, custom watch folder paths, poll intervals, clipboard privacy, background indexing, launch at login, run in background when window closed) via SQLite in Tauri or `localStorage` in browser mock. Listens for `settings-changed` events from the tray menu to reload after tray toggles background indexing.
 
@@ -118,6 +119,7 @@ flowchart LR
 | `get_favorites` / `set_favorite` | Persist pinned memories (`memory_id` + metadata snapshot JSON) |
 | `get_memory_tag_assignments` / `add_memory_tag` / `remove_memory_tag` | Load and mutate tag assignments (separate from index cache) |
 | `get_tag_statistics` | Tag count and top 10 most-used tags |
+| `get_saved_searches` / `create_saved_search` / `rename_saved_search` / `delete_saved_search` | CRUD for named search shortcuts (`id`, `name`, `query`, `created_at_ms`) |
 | `clear_clipboard_history` / `clear_indexed_content` | Privacy / recovery — clear clipboard history or all cached index text |
 | `get_global_hotkey_status` | Whether `Cmd + Shift + Space` registered successfully (for Settings warning) |
 | `hide_quick_search_overlay` | Hide the `quick-search` overlay window |
@@ -149,7 +151,7 @@ Background capture (file poll, clipboard poll, indexing queue) stays in the Reac
 
 | Store | Location | Contents |
 |-------|----------|----------|
-| **SQLite** (`rusqlite`, bundled) | `{data_local_dir}/com.remy.app/remy.sqlite` | `clipboard_entries`, `file_index_cache`, `favorites`, `tags`, `memory_tags`, `app_settings` |
+| **SQLite** (`rusqlite`, bundled) | `{data_local_dir}/com.remy.app/remy.sqlite` | `clipboard_entries`, `file_index_cache`, `favorites`, `tags`, `memory_tags`, `saved_searches`, `app_settings` |
 
 - **Clipboard**: Saved after each successful poll; text **normalized** (trim + collapse whitespace) before save; **deduplicated per calendar day** — same normalized text on the same local day does not create a new row (existing history is not deleted); restored into `ClipboardMonitor` on startup.
 - **Index cache**: Keyed by `file_path`; validated with `file_mtime_ms` + `file_size` so changed files are re-indexed on demand.
@@ -196,6 +198,7 @@ Unified shape for files and clipboard snippets:
 - **Favorites** sidebar: dedicated page listing all pinned items from every source (no source filters); star toggle on Timeline/Memories cards and details panel
 - **File tags (Phase 1)**: custom tags on any memory item; details panel Tags section with pills, **+ Add Tag** (create or assign existing), remove per tag; Timeline optional tag filter row (All + top tags); search supports `tag:name` and combined queries (`ethereum tag:crypto`); Quick Search overlay uses the same `contentSearch` rules; Settings shows tag count and most-used tags
 - **Indexed** sidebar: dedicated page for files with cached extracted text (Downloads, Desktop, Documents); search, sort, index metadata on cards
+- **Saved Searches** sidebar: lightweight list below Indexed with search icon; **+** (tooltip *Save current search*) opens save dialog; click applies query to Timeline; hover **×** delete; right-click rename/delete; SQLite + browser mock persistence
 - Timeline search with highlighted snippets
 - Detail panel: Index Content / Reindex / Clear index for txt·pdf·docx; open / reveal / copy path (image OCR controls hidden while postponed)
 - **Background indexing**: off by default; optional queue for TXT/DOCX (configurable scope) and PDF; OCR not queued; session limits; queue status in sidebar and Settings
@@ -313,6 +316,16 @@ OCR code remains in the repo (`ocr_engine.rs`, `src/lib/ocrFeature.ts`) but is *
 9. **Timeline filter** — When tags exist, a **Tags** row appears under Folders (All + top tags). Click `#crypto` to filter the feed.
 10. **Favorites independence** — Star an item with tags; remove tags — favorite status unchanged.
 11. **Settings** — Settings → Statistics shows **Tag count** and **Most used tags** list.
+
+### Testing saved searches (Tauri or browser mock)
+
+1. **Create** — On Timeline, type `tag:edu` in the header or Timeline search bar. Sidebar → Saved Searches → **+**. **Save Search** modal opens (name prefilled, query read-only). Click **Save** → item appears in the list.
+2. **Empty query** — With no search text, click **+** → inline message *Enter a search query first.*
+3. **Apply** — Click a saved search. Timeline switches to that section with the query applied; results filter immediately.
+4. **Delete** — Hover a row → click **×**, or right-click → **Delete** (no confirm).
+5. **Rename** — Right-click → **Rename** (browser `prompt`; Tauri may need a future modal).
+6. **Persistence** — Quit and relaunch. Saved searches remain (SQLite `saved_searches` in Tauri; `remy-saved-searches` in `localStorage` for browser dev).
+7. **Active state** — When the current query matches a saved search, that row is highlighted in the sidebar.
 
 ### Testing clipboard deduplication (Tauri or browser mock)
 

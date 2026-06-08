@@ -31,7 +31,8 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 - [x] **Favorites** — independent pinned collection (SQLite + snapshots); dedicated page (all sources); star on cards/details
 - [x] **File tags (Phase 1)** — custom tags on memory items (SQLite `tags` + `memory_tags`); details panel add/remove; Timeline tag filter; `tag:` search syntax; Quick Search tag autocomplete (`tag`, `tag:`, `#` triggers + usage counts) and overlay tag filtering; Settings tag statistics
 - [x] **Indexed** — dedicated page for files with extracted index text (all sources); search, sort, index metadata on cards
-- [ ] **Search** — dedicated search experience (saved queries, result grouping, keyboard focus)
+- [ ] **Search** — dedicated search experience (result grouping, keyboard focus)
+- [x] **Saved searches** — sidebar below Indexed; `SaveSearchModal`; create / rename / delete; apply on click; SQLite + localStorage persistence
 - [x] **Quick Search overlay** — Spotlight-style overlay (`Cmd + Shift + Space`); **context chips** (All / Recent / Clipboard / Favorites / Tags); **tag autocomplete** (`tag`, `tag:`, `tag:name`, `#`, `#name`) with usage counts; All uses live union browse; scoped search per context; `tag:` syntax; ↑↓ navigate; Enter open/copy; **Esc hide overlay**; Cmd+Enter opens in main app
 - [x] **Settings** — folder scan toggles (Downloads / Desktop / Documents), poll intervals, clipboard privacy, shortcuts (read-only), startup (launch at login + background when closed), clear history/index, statistics
 - [ ] Theme customization (if needed)
@@ -120,7 +121,7 @@ Version target in bundle: **0.1.0** (early prototype). Items are ordered roughly
 2. Update checkboxes when merging work (or strike through with PR link).
 3. If scope changes, edit **Principles** in `PROJECT_CONTEXT.md` first, then adjust phases here.
 
-**Current focus recommendation:** Phase 1.1 (Search dedicated view) — Quick Search overlay with context chips, tag autocomplete, global hotkey, file tags, onboarding, empty states, Settings, persistence, custom watch folders, tray/background mode, and launch at login are in place. OCR postponed until a dedicated worker exists. Timeline layout uses stable main-page scroll (no nested scroll containers).
+**Current focus recommendation:** Phase 1.1 (Search dedicated view) — saved search shortcuts are in the sidebar; remaining Search work is a dedicated results page with grouping and keyboard focus. Quick Search overlay, tags, operators, tray/background mode, and launch at login are in place. OCR postponed until a dedicated worker exists.
 
 ---
 
@@ -136,6 +137,23 @@ Commit: `feat: add tag autocomplete and overlay tag search`
 | Selection | Fills `tag:name`, shows tagged memories in overlay |
 | Tag search | Completed `tag:name` uses `contentSearch` tag filter; `#name` normalized to `tag:name` |
 | Overlay UI | `TagSuggestionRowContent` in `QuickSearchOverlay.tsx`; ↑↓ Enter click unchanged |
+
+---
+
+## Session log — saved searches
+
+Commit: `feat: implement saved searches`
+
+| Deliverable | Notes |
+|-------------|--------|
+| Sidebar section | Below Indexed; search icon per row; active-query highlight |
+| Save dialog | `SaveSearchModal` — name (editable), query (read-only), Cancel / Save |
+| Create | **+** tooltip *Save current search*; empty query → inline hint |
+| Apply | Click sets Timeline `contentQuery`, switches to Timeline section |
+| Delete | Hover **×** or right-click (no confirm) |
+| Rename | Right-click menu |
+| Persistence | SQLite `saved_searches`; `remy-saved-searches` localStorage mock |
+| Stack | `useSavedSearches`, `savedSearches.ts`, `saved_searches.rs` Tauri commands |
 
 ---
 

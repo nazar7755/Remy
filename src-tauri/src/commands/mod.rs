@@ -1,6 +1,7 @@
 pub mod clipboard;
 pub mod content_index;
 pub mod favorites;
+pub mod saved_searches;
 pub mod tags;
 pub mod file_actions;
 pub mod file_scanner;

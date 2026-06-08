@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { resolveFavoriteItems } from './lib/favorites'
 import { resolveIndexedItems } from './lib/indexedItems'
@@ -8,9 +8,11 @@ import { FileMemoryTimeline } from './components/FileMemoryTimeline'
 import { OnboardingModal } from './components/OnboardingModal'
 import { SearchBar } from './components/SearchBar'
 import { SettingsPage } from './components/SettingsPage'
+import { SaveSearchModal } from './components/SaveSearchModal'
 import { Sidebar } from './components/Sidebar'
 import { useBackgroundIndexing } from './hooks/useBackgroundIndexing'
 import { useFavorites } from './hooks/useFavorites'
+import { useSavedSearches } from './hooks/useSavedSearches'
 import { useTags } from './hooks/useTags'
 import { useFileScanner } from './hooks/useFileScanner'
 import { useOnboarding } from './hooks/useOnboarding'
@@ -50,11 +52,18 @@ function App() {
   const [activeSection, setActiveSection] = useState<NavSection>('Timeline')
   const [globalQuery, setGlobalQuery] = useState('')
   const [contentQuery, setContentQuery] = useState('')
+  const [saveSearchOpen, setSaveSearchOpen] = useState(false)
+  const [saveSearchSaving, setSaveSearchSaving] = useState(false)
+  const [saveSearchEmptyHint, setSaveSearchEmptyHint] = useState<string | null>(
+    null,
+  )
   const globalSearchRef = useRef<HTMLInputElement>(null)
+  const emptyHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const settingsState = useSettings()
   const previewEmptyStates = usePreviewEmptyStates()
   const favorites = useFavorites()
+  const savedSearches = useSavedSearches()
   const tags = useTags()
   const scannerEnabled =
     isTauri() ||
@@ -125,6 +134,56 @@ function App() {
   const meta = SECTION_META[activeSection]
   const timelineQuery = globalQuery.trim() || contentQuery.trim()
 
+  const applySearchQuery = useCallback((query: string) => {
+    setContentQuery(query)
+    setGlobalQuery('')
+    setActiveSection('Timeline')
+  }, [])
+
+  const showEmptySearchHint = useCallback(() => {
+    setSaveSearchEmptyHint('Enter a search query first.')
+    if (emptyHintTimerRef.current) {
+      clearTimeout(emptyHintTimerRef.current)
+    }
+    emptyHintTimerRef.current = setTimeout(() => {
+      setSaveSearchEmptyHint(null)
+      emptyHintTimerRef.current = null
+    }, 3000)
+  }, [])
+
+  const handleSaveCurrentSearch = useCallback(() => {
+    const query = globalQuery.trim() || contentQuery.trim()
+    if (!query) {
+      showEmptySearchHint()
+      return
+    }
+    setSaveSearchEmptyHint(null)
+    setSaveSearchOpen(true)
+  }, [globalQuery, contentQuery, showEmptySearchHint])
+
+  const handleSaveSearchConfirm = useCallback(
+    async (name: string, query: string) => {
+      setSaveSearchSaving(true)
+      try {
+        const created = await savedSearches.create(name, query)
+        if (created) {
+          setSaveSearchOpen(false)
+        }
+      } finally {
+        setSaveSearchSaving(false)
+      }
+    },
+    [savedSearches],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (emptyHintTimerRef.current) {
+        clearTimeout(emptyHintTimerRef.current)
+      }
+    }
+  }, [])
+
   const favoriteItems = useMemo(
     () =>
       resolveFavoriteItems(
@@ -152,6 +211,14 @@ function App() {
 
   return (
     <div className="flex h-svh overflow-hidden">
+      <SaveSearchModal
+        open={saveSearchOpen}
+        query={globalQuery.trim() || contentQuery.trim()}
+        saving={saveSearchSaving}
+        onCancel={() => setSaveSearchOpen(false)}
+        onSave={(name, query) => void handleSaveSearchConfirm(name, query)}
+      />
+
       <OnboardingModal
         open={onboarding.open}
         scanning={memoryScan.loading}
@@ -165,6 +232,14 @@ function App() {
         activeSection={activeSection}
         onSectionChange={setActiveSection}
         indexingQueue={indexingQueue}
+        savedSearches={savedSearches.searches}
+        savedSearchesLoading={savedSearches.loading}
+        activeSearchQuery={timelineQuery}
+        onSavedSearchSelect={applySearchQuery}
+        onSaveCurrentSearch={handleSaveCurrentSearch}
+        onRenameSavedSearch={(id, name) => void savedSearches.rename(id, name)}
+        onDeleteSavedSearch={(id) => void savedSearches.remove(id)}
+        saveSearchEmptyHint={saveSearchEmptyHint}
       />
 
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
